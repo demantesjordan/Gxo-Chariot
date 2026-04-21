@@ -466,6 +466,17 @@ tbody tr:hover td{background:var(--surface2)}
   console.log('Firebase ready');
 </script>
 
+
+<!-- EmailJS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+  (function(){
+    if(window.emailjs){
+      emailjs.init({ publicKey: "1vhuPXLJpBEoNJuKx" });
+    }
+  })();
+</script>
+
 </head>
 <body>
 <div id="err-box" style="display:none;position:fixed;top:60px;left:8px;right:8px;background:#ff3333;color:#fff;padding:12px;border-radius:8px;z-index:99999;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow-y:auto">
@@ -1717,6 +1728,8 @@ function submitPanne(){
   renderDash();
   if(document.getElementById('page-interventions').classList.contains('active')) renderInterventions();
   toast('Panne déclarée + intervention créée','ok');
+  // Notification email
+  sendPanneEmail(pannes[0], c);
 }
 
 // ══════════════════════════════════════════
@@ -2124,6 +2137,53 @@ function closeIntervention(interId){
   toast('Intervention clôturée','ok');
 }
 
+
+
+// ══════════════════════════════════════════
+// EMAILJS - Notification pannes
+// ══════════════════════════════════════════
+var EMAILJS_SERVICE_ID = 'service_kqfu72g';
+var EMAILJS_TEMPLATE_ID = 'template_avti9jk';
+var PANNE_NOTIFY_EMAILS = ['jordan.demantes@gxo.com', 'alison.delaise@gxo.com'];
+
+function sendPanneEmail(panne, chariot){
+  if(!window.emailjs){ console.warn('EmailJS non chargé'); return; }
+  try {
+    var appUrl = window.location.href.split('#')[0].split('?')[0];
+    var urgenceLabel = panne.urgence === 'haute' ? '🔴 HAUTE - Arrêt' : '🟡 Normale';
+    var arretLabel = panne.arret === 'oui' ? '⚠️ OUI' : 'Non';
+    var station = panne.station || 'Non précisé';
+
+    var params = {
+      to_email: PANNE_NOTIFY_EMAILS.join(', '),
+      chariot_type: chariot ? chariot.t : '—',
+      chariot_serie: panne.serie,
+      chariot_interne: chariot ? (chariot.i || '—') : '—',
+      client: panne.client,
+      urgence: urgenceLabel,
+      arret: arretLabel,
+      station: station,
+      description: panne.desc,
+      reference: panne.ref || 'Non renseignée',
+      declare_par: panne.declareePar || 'Utilisateur',
+      date_declaration: panne.date,
+      app_url: appUrl
+    };
+
+    // EmailJS v4 send
+    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params)
+      .then(function(resp){
+        console.log('Email envoyé:', resp.status);
+        toast('📧 Notification email envoyée', 'ok');
+      })
+      .catch(function(err){
+        console.error('Erreur email:', err);
+        toast('⚠️ Email non envoyé (panne enregistrée)', 'err');
+      });
+  } catch(e){
+    console.error('sendPanneEmail exception:', e);
+  }
+}
 
 // ══════════════════════════════════════════
 // PERMISSIONS
