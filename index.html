@@ -1219,6 +1219,11 @@ setTimeout(function(){
 // NAVIGATION
 // ══════════════════════════════════════════
 function nav(page){
+  // Permission check: block settings for user/technicien
+  if(page === 'settings' && currentUser && (currentUser.role === 'user' || currentUser.role === 'technicien')){
+    toast('Accès réservé aux administrateurs', 'err');
+    return;
+  }
   var pages = document.querySelectorAll('.page');
   for(var i=0;i<pages.length;i++) pages[i].classList.remove('active');
   var items = document.querySelectorAll('.nav-item');
@@ -2532,6 +2537,16 @@ function updateUserMenu(){
   var nm = currentUser.name || currentUser.user;
   document.getElementById('user-name').textContent = nm;
   document.getElementById('user-avatar').textContent = nm.charAt(0).toUpperCase();
+  // Hide Paramètres for user and technicien roles
+  var navSettings = document.getElementById('nav-settings');
+  if(navSettings){
+    var role = currentUser.role;
+    if(role === 'admin' || role === 'manager'){
+      navSettings.style.display = '';
+    } else {
+      navSettings.style.display = 'none';
+    }
+  }
 }
 
 function showUserMenu(){
