@@ -608,6 +608,11 @@ tbody tr:hover td{background:var(--surface2)}
         <div class="ph-left"><h1>Suivi Pannes</h1><p>Cliquez sur un chariot pour sa carte d'identité complète</p></div>
         <div class="ph-actions"><button class="btn btn-primary btn-sm" onclick="openNewPanneModal()">＋ Déclarer panne</button></div>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <select class="finput" id="pannes-filter-client" onchange="renderPannes()" style="flex:1 1 160px;max-width:200px">
+          <option value="">Tous dossiers</option>
+        </select>
+      </div>
       <div class="kpi-row" id="pannes-kpis"></div>
       <div class="sh"><h2>⚠ Pannes actives</h2></div>
       <div id="pannes-actives"></div>
@@ -619,7 +624,7 @@ tbody tr:hover td{background:var(--surface2)}
     <div class="page" id="page-interventions">
       <div class="ph">
         <div class="ph-left"><h1>Interventions</h1><p>Historique et suivi des interventions 2024-2025</p></div>
-        <div class="ph-actions"><button class="btn btn-primary btn-sm" onclick="openNewInterModal()">＋ Ajouter</button></div>
+        <div class="ph-actions" id="inter-add-btn"><button class="btn btn-primary btn-sm" onclick="openNewInterModal()">＋ Ajouter</button></div>
       </div>
       <div class="inter-kpis" id="inter-kpis"></div>
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;max-width:100%">
@@ -628,7 +633,7 @@ tbody tr:hover td{background:var(--surface2)}
         </select>
         <select class="finput" id="inter-filter-type" onchange="renderInterventions()" style="max-width:100%;min-width:0;flex:1 1 140px">
           <option value="">Tous types</option>
-          <option>Réparation</option><option>Entretien</option><option>Devis</option><option>Contrôle</option>
+          <option>Devis</option><option>Entretien</option>
         </select>
         <select class="finput" id="inter-filter-statut" onchange="renderInterventions()" style="max-width:100%;min-width:0;flex:1 1 140px">
           <option value="">Tous statuts</option>
@@ -659,6 +664,9 @@ tbody tr:hover td{background:var(--surface2)}
         </select>
         <select class="finput" id="stats-client" onchange="onStatsClientChange()" style="flex:1 1 120px;max-width:160px">
           <option value="">Tous clients</option>
+        </select>
+        <select class="finput" id="stats-type" onchange="renderStats()" style="flex:1 1 120px;max-width:160px">
+          <option value="">Tous types</option>
         </select>
         <select class="finput" id="stats-chariot" onchange="renderStats()" style="flex:1 1 120px;max-width:180px">
           <option value="">Tous chariots</option>
@@ -875,7 +883,7 @@ tbody tr:hover td{background:var(--surface2)}
         </div>
         <div class="form-group"><label>Type intervention *</label>
           <select class="fselect" id="ni-type">
-            <option>Réparation</option><option>Entretien</option><option>Devis</option><option>Contrôle</option><option>Livraison</option>
+            <option>Devis</option><option>Entretien</option>
           </select>
         </div>
       </div>
@@ -1550,22 +1558,38 @@ function openCarteId(serie){
 // PANNES
 // ══════════════════════════════════════════
 function renderPannes(){
-  const act=pannes.filter(p=>p.statut==='cours');
-  const res=pannes.filter(p=>p.statut!=='cours');
-  const totCout=pannes.reduce((a,p)=>a+(p.cout||0),0);
-  const joursTotal=act.reduce((a,p)=>a+daysDiff(p.debut||p.date),0);
-  document.getElementById('nb-pannes').textContent=act.length;
+  // Populate client filter if empty
+  var clF = document.getElementById('pannes-filter-client');
+  if(clF && clF.children.length <= 1){
+    var h = '<option value="">Tous dossiers</option>';
+    for(var i=0;i<clients_list.length;i++) h += '<option>'+clients_list[i]+'</option>';
+    clF.innerHTML = h;
+  }
+  var fClient = clF ? clF.value : '';
 
-  document.getElementById('pannes-kpis').innerHTML=`
-    <div class="kpi" style="--kc:var(--red)"><div class="kpi-val">${act.length}</div><div class="kpi-lbl">Actives</div></div>
-    <div class="kpi" style="--kc:var(--green)"><div class="kpi-val">${res.length}</div><div class="kpi-lbl">Résolues</div></div>
-    <div class="kpi" style="--kc:var(--orange)"><div class="kpi-val">${act.filter(p=>p.urgence==='haute').length}</div><div class="kpi-lbl">Urgentes</div></div>
-    <div class="kpi" style="--kc:var(--orange)"><div class="kpi-val" style="font-size:22px">${fmtEuro(totCout)}</div><div class="kpi-lbl">Coût total</div></div>
-    <div class="kpi" style="--kc:var(--yellow)"><div class="kpi-val">${joursTotal}</div><div class="kpi-lbl">Jours d'arrêt cumulés</div></div>`;
+  // Apply filter
+  var filteredP = pannes;
+  if(fClient) filteredP = pannes.filter(function(p){return p.client === fClient});
 
-  document.getElementById('pannes-actives').innerHTML=act.length?act.map(p=>panneCard(p)).join(''):
-    '<div class="empty"><div class="ei">✅</div><p>Aucune panne active — tout est opérationnel</p></div>';
-  document.getElementById('pannes-resolues').innerHTML=res.slice(0,8).map(p=>panneCard(p,true)).join('');
+  var act = filteredP.filter(function(p){return p.statut === 'cours'});
+  var res = filteredP.filter(function(p){return p.statut !== 'cours'});
+  var totCout = filteredP.reduce(function(a,p){return a + (p.cout||0)}, 0);
+  var joursTotal = act.reduce(function(a,p){return a + daysDiff(p.debut||p.date)}, 0);
+
+  // Global badge count always shows all active pannes
+  document.getElementById('nb-pannes').textContent = pannes.filter(function(p){return p.statut==='cours'}).length;
+
+  document.getElementById('pannes-kpis').innerHTML =
+    '<div class="kpi" style="--kc:var(--red)"><div class="kpi-val">'+act.length+'</div><div class="kpi-lbl">Actives</div></div>' +
+    '<div class="kpi" style="--kc:var(--green)"><div class="kpi-val">'+res.length+'</div><div class="kpi-lbl">Résolues</div></div>' +
+    '<div class="kpi" style="--kc:var(--orange)"><div class="kpi-val">'+act.filter(function(p){return p.urgence==='haute'}).length+'</div><div class="kpi-lbl">Urgentes</div></div>' +
+    '<div class="kpi" style="--kc:var(--orange)"><div class="kpi-val" style="font-size:22px">'+fmtEuro(totCout)+'</div><div class="kpi-lbl">Coût total</div></div>' +
+    '<div class="kpi" style="--kc:var(--yellow)"><div class="kpi-val">'+joursTotal+'</div><div class="kpi-lbl">Jours d\'arrêt cumulés</div></div>';
+
+  document.getElementById('pannes-actives').innerHTML = act.length
+    ? act.map(function(p){return panneCard(p)}).join('')
+    : '<div class="empty"><div class="ei">✅</div><p>Aucune panne active'+(fClient?' pour '+fClient:' — tout est opérationnel')+'</p></div>';
+  document.getElementById('pannes-resolues').innerHTML = res.slice(0,8).map(function(p){return panneCard(p,true)}).join('') || '<div class="empty" style="padding:20px"><p style="font-size:12px">Aucune panne résolue</p></div>';
 }
 
 function panneCard(p, resolved){
@@ -1582,7 +1606,15 @@ function panneCard(p, resolved){
       actionsHtml += '<span class="badge badge-blue" style="padding:5px 10px">📥 '+p.priseEnCompte+' · '+(p.priseEnComptePar||'')+'</span>';
     }
     actionsHtml += '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();cloturePanne(\''+p.id+'\')">✓ Clôturer</button>';
+    if(isAdmin()){
+      actionsHtml += '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();delPanne(\''+p.id+'\')">🗑 Supprimer</button>';
+    }
     actionsHtml += '</div>';
+  } else if(resolved && isAdmin()){
+    // For resolved pannes, admin can still delete
+    actionsHtml = '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">' +
+      '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();delPanne(\''+p.id+'\')">🗑 Supprimer</button>' +
+    '</div>';
   }
   var docsHtml = (p.docs && p.docs.length) ? '<span style="font-size:10px;color:var(--blue);margin-left:4px">📎'+p.docs.length+'</span>' : '';
   var urgBadge = !resolved ? '<div class="badge '+(p.urgence==='haute'?'badge-red':'badge-yellow')+'" style="margin-top:5px">'+(p.urgence==='haute'?'🔴 URGENT':'🟡 Normal')+'</div>' : '';
@@ -1664,7 +1696,7 @@ function submitPanne(){
     serie: serie,
     type: (c ? c.t : '—'),
     client: (c ? c.cl : '—'),
-    inter_type: 'Réparation',
+    inter_type: 'Devis',
     objet: objetInter,
     mois: currentMonth,
     statut: (urgence === 'haute' || arret === 'oui') ? 'Non traité' : 'En cours',
@@ -1691,32 +1723,45 @@ function submitPanne(){
 // INTERVENTIONS
 // ══════════════════════════════════════════
 function renderInterventions(){
-  // populate client filter
-  const cf=document.getElementById('inter-filter-client');
-  if(cf.children.length<=1){
-    clients_list.forEach(cl=>{const o=document.createElement('option');o.value=cl;o.textContent=cl;cf.appendChild(o);});
+  var cf = document.getElementById('inter-filter-client');
+  if(cf.children.length <= 1){
+    for(var i=0;i<clients_list.length;i++){
+      var o = document.createElement('option');
+      o.value = clients_list[i]; o.textContent = clients_list[i];
+      cf.appendChild(o);
+    }
   }
-  const fcl=cf.value;
-  const ftype=document.getElementById('inter-filter-type').value;
-  const fst=document.getElementById('inter-filter-statut').value;
-  const filtered=inters.filter(i=>(!fcl||i.client===fcl)&&(!ftype||i.inter_type===ftype)&&(!fst||i.statut===fst));
+  var fcl = cf.value;
+  var ftype = document.getElementById('inter-filter-type').value;
+  var fst = document.getElementById('inter-filter-statut').value;
+  var filtered = inters.filter(function(it){
+    return (!fcl || it.client === fcl) && (!ftype || it.inter_type === ftype) && (!fst || it.statut === fst);
+  });
 
-  // KPIs
-  const totCout=inters.reduce((a,i)=>a+(i.cout||0),0);
-  const byClient={};clients_list.forEach(cl=>byClient[cl]=inters.filter(i=>i.client===cl).length);
-  const byType={};['Réparation','Entretien','Devis','Contrôle'].forEach(t=>byType[t]=inters.filter(i=>i.inter_type===t).length);
-  document.getElementById('inter-kpis').innerHTML=`
-    <div class="ik"><div class="v" style="color:var(--orange)">${inters.length}</div><div class="l">Total</div></div>
-    <div class="ik"><div class="v" style="color:var(--orange)">${fmtEuro(totCout)}</div><div class="l">Coût total HT</div></div>
-    ${clients_list.map(cl=>`<div class="ik"><div class="v" style="color:var(--orange)">${byClient[cl]||0}</div><div class="l">${cl}</div></div>`).join('')}
-    <div class="ik"><div class="v" style="color:var(--green)">${byType['Entretien']||0}</div><div class="l">Entretiens</div></div>
-    <div class="ik"><div class="v" style="color:var(--red)">${byType['Réparation']||0}</div><div class="l">Réparations</div></div>
-    <div class="ik"><div class="v" style="color:var(--blue)">${byType['Devis']||0}</div><div class="l">Devis</div></div>`;
+  // KPIs reflect FILTERED data
+  var totCout = filtered.reduce(function(a,it){return a + (it.cout||0)}, 0);
+  var byType = {};
+  var types = ['Devis','Entretien'];
+  for(var i=0;i<types.length;i++) byType[types[i]] = filtered.filter(function(x){return x.inter_type === types[i]}).length;
+  var byStatut = {};
+  ['Terminé','En cours','Non traité'].forEach(function(s){
+    byStatut[s] = filtered.filter(function(x){return x.statut === s}).length;
+  });
+
+  var kpisHtml =
+    '<div class="ik"><div class="v" style="color:var(--orange)">'+filtered.length+'</div><div class="l">Total</div></div>' +
+    '<div class="ik"><div class="v" style="color:var(--orange)">'+fmtEuro(totCout)+'</div><div class="l">Coût total HT</div></div>' +
+    '<div class="ik"><div class="v" style="color:var(--blue)">'+(byType['Devis']||0)+'</div><div class="l">Devis / Réparations</div></div>' +
+    '<div class="ik"><div class="v" style="color:var(--green)">'+(byType['Entretien']||0)+'</div><div class="l">Entretiens</div></div>' +
+    '<div class="ik"><div class="v" style="color:var(--green)">'+(byStatut['Terminé']||0)+'</div><div class="l">Terminées</div></div>' +
+    '<div class="ik"><div class="v" style="color:var(--yellow)">'+(byStatut['En cours']||0)+'</div><div class="l">En cours</div></div>' +
+    '<div class="ik"><div class="v" style="color:var(--red)">'+(byStatut['Non traité']||0)+'</div><div class="l">Non traitées</div></div>';
+  document.getElementById('inter-kpis').innerHTML = kpisHtml;
 
   const sb={Terminé:'badge-green','En cours':'badge-yellow','Non traité':'badge-red'};
   document.getElementById('inter-tbody').innerHTML = filtered.map(function(it){
     var docsCell = (it.docs && it.docs.length) ? '<span style="color:var(--blue);cursor:pointer" onclick="event.stopPropagation();showDocs(\''+it.id+'\')" title="'+it.docs.length+' doc(s)">📎 '+it.docs.length+'</span>' : '—';
-    var canEditThis = isManagerOrAdmin();
+    var canEditThis = currentUser && (currentUser.role === 'admin' || currentUser.role === 'technicien');
     var editCell = canEditThis
       ? '<button class="btn btn-ghost btn-sm" style="padding:4px 9px;font-size:11px" onclick="event.stopPropagation();openEditInter(\''+it.id+'\')">✎</button>'
       : '';
@@ -1735,11 +1780,15 @@ function renderInterventions(){
 }
 
 function openNewInterModal(){
+  if(!(currentUser && (currentUser.role === 'admin' || currentUser.role === 'technicien'))){
+    toast('Réservé aux administrateurs et techniciens Fenwick', 'err');
+    return;
+  }
   pendingFiles['ni']=[];
   document.getElementById('ni-serie').value='';document.getElementById('ni-objet').value='';
   document.getElementById('ni-inter').value='';document.getElementById('ni-cout').value='';
   document.getElementById('ni-attach-list').innerHTML='';
-  document.getElementById('ni-dl').innerHTML=chariots.map(c=>`<option value="${c.s}">${c.t} · ${c.cl}</option>`).join('');
+  document.getElementById('ni-dl').innerHTML = chariots.map(function(c){return '<option value="'+c.s+'">'+c.t+' · '+c.cl+'</option>'}).join('');
   openModal('modal-inter');
 }
 
@@ -1905,6 +1954,42 @@ function priseEnCompte(panneId){
   toast('Panne prise en compte par Fenwick','ok');
 }
 
+function delPanne(panneId){
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
+  var p = pannes.find(function(x){return x.id === panneId});
+  if(!p) return;
+  if(!confirm('Supprimer définitivement cette panne ? Cette action est irréversible.')) return;
+  // Remove panne
+  pannes = pannes.filter(function(x){return x.id !== panneId});
+  // Also remove linked intervention if exists
+  inters = inters.filter(function(it){return it.panneId !== panneId});
+  // Also delete from Firebase (individually, since batch doesn't handle deletes for removed items)
+  if(window.FB && window.FB.ready){
+    try {
+      _suppressRemoteUpdate = true;
+      window.FB.deleteDoc(window.FB.doc(window.FB.db, 'pannes', safeId(panneId)));
+      // Delete linked inters too
+      if(p){
+        var linkedInters = inters.concat(); // already filtered, find originals
+      }
+      setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
+    } catch(e){ console.error(e); }
+  }
+  // If chariot was in panne status and no more active pannes for it, set back to disponible
+  var c = chariots.find(function(x){return x.s === p.serie});
+  if(c && c.statut === 'panne'){
+    var stillHasPanne = pannes.some(function(x){return x.serie === p.serie && x.statut === 'cours'});
+    if(!stillHasPanne){
+      c.statut = 'disponible';
+      c.lastUpdate = new Date().toISOString();
+    }
+  }
+  save();
+  renderPannes();
+  renderDash();
+  toast('Panne supprimée','ok');
+}
+
 function cloturePanne(panneId){
   if(!isManagerOrAdmin()){ toast('Action réservée au staff maintenance','err'); return; }
   var p = pannes.find(function(x){return x.id === panneId});
@@ -1932,7 +2017,10 @@ function cloturePanne(panneId){
 // INTERVENTIONS : Edit + Close + Attach docs
 // ══════════════════════════════════════════
 function openEditInter(interId){
-  if(!isManagerOrAdmin()){ toast('Action réservée au staff maintenance','err'); return; }
+  if(!(currentUser && (currentUser.role === 'admin' || currentUser.role === 'technicien'))){
+    toast('Réservé aux administrateurs et techniciens Fenwick', 'err');
+    return;
+  }
   var it = inters.find(function(x){return x.id === interId});
   if(!it) return;
   pendingFiles['edi'] = (it.docs || []).slice();
@@ -1941,7 +2029,7 @@ function openEditInter(interId){
     return '<option value="'+c.s+'" '+(c.s===it.serie?'selected':'')+'>'+c.s+' · '+c.t+' · '+c.cl+'</option>';
   }).join('');
 
-  var typeOpts = ['Réparation','Entretien','Devis','Contrôle','Livraison'].map(function(t){
+  var typeOpts = ['Devis','Entretien'].map(function(t){
     return '<option '+(t===it.inter_type?'selected':'')+'>'+t+'</option>';
   }).join('');
 
@@ -2091,6 +2179,16 @@ function renderStats(){
     for(var i=0;i<chariots.length;i++) h2 += '<option value="'+chariots[i].s+'">'+chariots[i].s+' · '+chariots[i].t+'</option>';
     chSel.innerHTML = h2;
   }
+  // populate type select if empty
+  var typeSel = document.getElementById('stats-type');
+  if(typeSel && typeSel.children.length <= 1){
+    var typesSet = {};
+    for(var i=0;i<chariots.length;i++){ if(chariots[i].t) typesSet[chariots[i].t] = true; }
+    var typesArr = Object.keys(typesSet).sort();
+    var h3 = '<option value="">Tous types</option>';
+    for(var i=0;i<typesArr.length;i++) h3 += '<option>'+typesArr[i]+'</option>';
+    typeSel.innerHTML = h3;
+  }
 
   var fYear = document.getElementById('stats-year').value;
   var fMonth = document.getElementById('stats-month').value;
@@ -2098,6 +2196,7 @@ function renderStats(){
 
   // filter pannes
   var fChariot = document.getElementById('stats-chariot').value;
+  var fType = document.getElementById('stats-type') ? document.getElementById('stats-type').value : '';
   var filteredP = pannes.filter(function(p){
     var d = p.date || p.debut || '';
     var parts = d.split('/');
@@ -2109,6 +2208,7 @@ function renderStats(){
     if(fMonth && pmName !== fMonth) return false;
     if(fClient && p.client !== fClient) return false;
     if(fChariot && p.serie !== fChariot) return false;
+    if(fType && p.type !== fType) return false;
     return true;
   });
 
@@ -2117,6 +2217,7 @@ function renderStats(){
     if(fMonth && it.mois !== fMonth) return false;
     if(fClient && it.client !== fClient) return false;
     if(fChariot && it.serie !== fChariot) return false;
+    if(fType && it.type !== fType) return false;
     return true;
   });
 
@@ -2250,7 +2351,7 @@ function renderStats(){
     h3 = '<div class="empty"><div class="ei">🔧</div><p>Aucune intervention</p></div>';
   } else {
     var maxT = tArr[0].count;
-    var colors = {'Réparation':'var(--red)','Entretien':'var(--green)','Devis':'var(--blue)','Contrôle':'var(--yellow)','Livraison':'var(--orange)'};
+    var colors = {'Devis':'var(--blue)','Entretien':'var(--green)'};
     for(var i=0;i<tArr.length;i++){
       var t = tArr[i];
       var pct = Math.round(t.count/maxT * 100);
@@ -2545,6 +2646,15 @@ function updateUserMenu(){
       navSettings.style.display = '';
     } else {
       navSettings.style.display = 'none';
+    }
+  }
+  // Hide "+ Ajouter" intervention button for non admin/technicien
+  var interAddBtn = document.getElementById('inter-add-btn');
+  if(interAddBtn){
+    if(currentUser.role === 'admin' || currentUser.role === 'technicien'){
+      interAddBtn.style.display = '';
+    } else {
+      interAddBtn.style.display = 'none';
     }
   }
 }
