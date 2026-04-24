@@ -56,7 +56,7 @@ body{font-family:var(--font-b);background:#0a0a0a !important;color:var(--text);d
 #main{width:100%;max-width:100%;overflow-x:hidden}
 
 /* ── HEADER ── */
-#header{height:54px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:16px;flex-shrink:0;z-index:50}
+#header{min-height:54px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:env(safe-area-inset-top,0) 20px 0;padding-top:calc(env(safe-area-inset-top,0px));gap:16px;flex-shrink:0;z-index:50;box-sizing:content-box}
 .logo{display:flex;align-items:center;gap:10px}
 .logo-text{font-family:var(--font-h);font-weight:900;font-size:20px;letter-spacing:.08em;color:#fff}
 .logo-text span{color:var(--orange)}
@@ -140,6 +140,7 @@ body{font-family:var(--font-b);background:#0a0a0a !important;color:var(--text);d
 .cbadge{padding:1px 7px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:.06em}
 .cb-BARRY{background:#111830;color:#6699ff}
 .cb-REDBULL{background:#2a0a12;color:#ff4466}
+.cb-MULET{background:#1f1f1f;color:#aaaaaa}
 .cb-PEPSI{background:#181030;color:#9988ff}
 .cb-SODIAAL{background:#0f1a10;color:#55cc66}
 .cb-SAMSUNG{background:#1a1008;color:#ff8833}
@@ -288,14 +289,14 @@ tbody tr:hover td{background:var(--surface2)}
   #sidebar{
     display:flex;
     width:100%;
-    height:58px;
+    height:calc(58px + env(safe-area-inset-bottom,0px));
+    padding-bottom:env(safe-area-inset-bottom,0px);
     position:fixed;
     bottom:0;left:0;right:0;
     flex-direction:row;
     border-right:none;
     border-top:1px solid var(--border);
     background:var(--surface);
-    padding:0;
     z-index:100;
     overflow-x:auto;
     overflow-y:hidden;
@@ -327,7 +328,7 @@ tbody tr:hover td{background:var(--surface2)}
     font-size:8px;
     padding:0 4px;
   }
-  #main{padding-bottom:70px}
+  #main{padding-bottom:calc(70px + env(safe-area-inset-bottom,0px))}
   .mgrid,.mgrid.g3,.form-row,.settings-grid{grid-template-columns:1fr}
   .cgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
   .kpi-row{grid-template-columns:1fr 1fr;gap:10px}
@@ -335,7 +336,7 @@ tbody tr:hover td{background:var(--surface2)}
   .kpi-val{font-size:32px}
   .page{padding:16px}
   .ph-left h1{font-size:22px}
-  #header{padding:0 14px}
+  #header{padding:env(safe-area-inset-top,0) 14px 0;padding-top:calc(env(safe-area-inset-top,0px))}
   .logo-text{font-size:18px}
   .logo-pill{font-size:8px;padding:2px 6px}
   #hclock{font-size:11px}
@@ -623,6 +624,9 @@ tbody tr:hover td{background:var(--surface2)}
         <select class="finput" id="pannes-filter-client" onchange="renderPannes()" style="flex:1 1 160px;max-width:200px">
           <option value="">Tous dossiers</option>
         </select>
+        <select class="finput" id="pannes-filter-type" onchange="renderPannes()" style="flex:1 1 160px;max-width:200px">
+          <option value="">Tous types chariot</option>
+        </select>
       </div>
       <div class="kpi-row" id="pannes-kpis"></div>
       <div class="sh"><h2>⚠ Pannes actives</h2></div>
@@ -862,7 +866,7 @@ tbody tr:hover td{background:var(--surface2)}
             <option>Salle de charge H/I</option>
           </select>
         </div>
-        <div class="form-group"><label>Référence Fenwick</label><input class="finput" id="np-ref" placeholder="ex: 730073745XXX"></div>
+        <div class="form-group"><label>Horamètre (h) *</label><input class="finput" id="np-hora" type="number" inputmode="numeric" placeholder="ex: 2500" required></div>
       </div>
       <!-- Pièces jointes -->
       <div class="form-group">
@@ -1009,7 +1013,12 @@ const PARC0 = [
   {s:'W4Y133L00859',i:'2756GB21',t:'D12SP',cl:'SODIAAL',h:0},
   {s:'W4X133Y01535',i:'2124GB17',t:'D12AP',cl:'SAMSUNG',h:0},
   {s:'PKY391L02204',i:'3267FG21',t:'H16T',cl:'SAMSUNG',h:0},
-  {s:'H2Y386M02740',i:'3269FE21',t:'E16C',cl:'PEPSI',h:0}
+  {s:'H2Y386M02740',i:'3269FE21',t:'E16C',cl:'PEPSI',h:0},
+  {s:'H2X115B03068',i:'Mulet1',t:'R14',cl:'MULET',h:0},
+  {s:'H2X115B03033',i:'Mulet2',t:'R14',cl:'MULET',h:0},
+  {s:'W4X131B04352',i:'Mulet3',t:'T20SP',cl:'MULET',h:0},
+  {s:'W4X131B04348',i:'Mulet4',t:'T20SP',cl:'MULET',h:0},
+  {s:'W4X131B04327',i:'Mulet5',t:'T20SP',cl:'MULET',h:0}
 ];
 
 const PANNES0 = [];
@@ -1030,7 +1039,7 @@ function load(){
   // All chariots start in "disponible" state — clean slate
   pannes = JSON.parse(localStorage.getItem('gxo4_pannes')||'null') || PANNES0;
   inters = JSON.parse(localStorage.getItem('gxo4_inters')||'null') || INTERS0;
-  clients_list = JSON.parse(localStorage.getItem('gxo4_clients')||'null') || ['REDBULL','PEPSI','SODIAAL','SAMSUNG'];
+  clients_list = JSON.parse(localStorage.getItem('gxo4_clients')||'null') || ['REDBULL','PEPSI','SODIAAL','SAMSUNG','MULET'];
   zones_list = JSON.parse(localStorage.getItem('gxo3_zones')||'null') || ['Zone Redbull','Zone Pepsi','Zone Samsung','Zone Sodiaal'];
   save();
 }
@@ -1503,18 +1512,29 @@ function savePanneDetail(idx){
 // CARTE D'IDENTITÉ CHARIOT
 // ══════════════════════════════════════════
 function openCarteId(serie){
-  const c=chariots.find(x=>x.s===serie);
-  if(!c){toast('Chariot introuvable','err');return;}
-  const myPannes=pannes.filter(p=>p.serie===serie);
-  const myInters=inters.filter(i=>i.serie===serie);
-  const st=c.statut||'disponible';
-  const totCout=myPannes.reduce((a,p)=>a+(p.cout||0),0)+myInters.reduce((a,i)=>a+(i.cout||0),0);
-  const nbPannes=myPannes.length;
-  const panneCours=myPannes.find(p=>p.statut==='cours');
-  const joursArr=panneCours?daysDiff(panneCours.debut):0;
+  // Normalize serie (trim whitespace, ensure string)
+  var targetSerie = String(serie || '').trim();
+  if(!targetSerie){ toast('N° série manquant','err'); return; }
 
-  document.getElementById('mid-title').textContent=`${c.t} · ${c.s}`;
-  document.getElementById('mid-sub').textContent=`${c.cl} · N°int: ${c.i||'—'}`;
+  var c = chariots.find(function(x){ return String(x.s||'').trim() === targetSerie; });
+  if(!c){ toast('Chariot introuvable : '+targetSerie,'err'); return; }
+
+  // Filter pannes and interventions STRICTLY by this chariot's serie
+  var myPannes = pannes.filter(function(p){ return String(p.serie||'').trim() === targetSerie; });
+  var myInters = inters.filter(function(i){ return String(i.serie||'').trim() === targetSerie; });
+
+  // Sort by most recent first (by id which includes timestamp)
+  myPannes.sort(function(a,b){ return String(b.id||'').localeCompare(String(a.id||'')); });
+  myInters.sort(function(a,b){ return String(b.id||'').localeCompare(String(a.id||'')); });
+
+  var st = c.statut || 'disponible';
+  var totCout = myPannes.reduce(function(a,p){ return a+(p.cout||0); }, 0) + myInters.reduce(function(a,i){ return a+(i.cout||0); }, 0);
+  var nbPannes = myPannes.length;
+  var panneCours = myPannes.find(function(p){ return p.statut === 'cours'; });
+  var joursArr = panneCours ? daysDiff(panneCours.debut || panneCours.date) : 0;
+
+  document.getElementById('mid-title').textContent = c.t + ' · ' + c.s;
+  document.getElementById('mid-sub').textContent = c.cl + ' · N°int: ' + (c.i || '—');
 
   const pannesHtml=myPannes.length?myPannes.map(p=>`
     <div class="hist-item">
@@ -1576,11 +1596,23 @@ function renderPannes(){
     for(var i=0;i<clients_list.length;i++) h += '<option>'+clients_list[i]+'</option>';
     clF.innerHTML = h;
   }
+  // Populate chariot type filter if empty
+  var tyF = document.getElementById('pannes-filter-type');
+  if(tyF && tyF.children.length <= 1){
+    var typesSet = {};
+    for(var i=0;i<chariots.length;i++){ if(chariots[i].t) typesSet[chariots[i].t] = true; }
+    var typesArr = Object.keys(typesSet).sort();
+    var h2 = '<option value="">Tous types chariot</option>';
+    for(var i=0;i<typesArr.length;i++) h2 += '<option>'+typesArr[i]+'</option>';
+    tyF.innerHTML = h2;
+  }
   var fClient = clF ? clF.value : '';
+  var fType = tyF ? tyF.value : '';
 
-  // Apply filter
+  // Apply filters
   var filteredP = pannes;
-  if(fClient) filteredP = pannes.filter(function(p){return p.client === fClient});
+  if(fClient) filteredP = filteredP.filter(function(p){return p.client === fClient});
+  if(fType) filteredP = filteredP.filter(function(p){return p.type === fType});
 
   var act = filteredP.filter(function(p){return p.statut === 'cours'});
   var res = filteredP.filter(function(p){return p.statut !== 'cours'});
@@ -1599,7 +1631,7 @@ function renderPannes(){
 
   document.getElementById('pannes-actives').innerHTML = act.length
     ? act.map(function(p){return panneCard(p)}).join('')
-    : '<div class="empty"><div class="ei">✅</div><p>Aucune panne active'+(fClient?' pour '+fClient:' — tout est opérationnel')+'</p></div>';
+    : '<div class="empty"><div class="ei">✅</div><p>Aucune panne active'+(fClient||fType?' pour ce filtre':' — tout est opérationnel')+'</p></div>';
   document.getElementById('pannes-resolues').innerHTML = res.slice(0,8).map(function(p){return panneCard(p,true)}).join('') || '<div class="empty" style="padding:20px"><p style="font-size:12px">Aucune panne résolue</p></div>';
 }
 
@@ -1651,7 +1683,7 @@ function openNewPanneModal(){
   pendingFiles['np']=[];
   document.getElementById('np-serie').value='';
   document.getElementById('np-desc').value='';
-  document.getElementById('np-ref').value='';
+  var horaEl = document.getElementById('np-hora'); if(horaEl) horaEl.value='';
   document.getElementById('np-urgence').value='normale';
   var arretEl = document.getElementById('np-arret'); if(arretEl) arretEl.value='non';
   var statEl = document.getElementById('np-station'); if(statEl) statEl.value='';
@@ -1664,13 +1696,18 @@ function openNewPanneModal(){
 function submitPanne(){
   var serie = document.getElementById('np-serie').value.trim();
   var desc = document.getElementById('np-desc').value.trim();
+  var horaEl = document.getElementById('np-hora');
+  var horaVal = horaEl ? horaEl.value.trim() : '';
   if(!serie || !desc){ toast('Remplissez N° Série et Description','err'); return; }
+  if(!horaVal){ toast('Horamètre obligatoire','err'); if(horaEl) horaEl.focus(); return; }
+  var hora = parseInt(horaVal, 10);
+  if(isNaN(hora) || hora < 0){ toast('Horamètre invalide','err'); if(horaEl) horaEl.focus(); return; }
+
   var c = chariots.find(function(x){return x.s === serie});
   var now = new Date();
   var panneId = 'P' + now.getTime();
   var dateStr = now.toLocaleDateString('fr-FR');
   var urgence = document.getElementById('np-urgence').value;
-  var ref = document.getElementById('np-ref').value;
   var arret = (document.getElementById('np-arret') && document.getElementById('np-arret').value) || 'non';
   var station = (document.getElementById('np-station') && document.getElementById('np-station').value) || '';
   var docs = pendingFiles['np'] || [];
@@ -1682,9 +1719,10 @@ function submitPanne(){
     client: (c ? c.cl : '—'),
     desc: desc,
     date: dateStr,
+    dateTime: now.toISOString(),
     urgence: urgence,
     statut: 'cours',
-    ref: ref,
+    horametre: hora,
     cout: 0,
     arret: arret,
     station: station,
@@ -1692,15 +1730,16 @@ function submitPanne(){
     debut: dateStr,
     priseEnCompte: null,
     priseEnComptePar: null,
+    priseEnCompteAt: null,
     dateCloture: null,
     clotureePar: null,
+    dateClotureAt: null,
     declareePar: currentUser ? (currentUser.name || currentUser.user) : '—'
   });
 
   var monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   var currentMonth = monthNames[now.getMonth()];
-  var objetInter = desc;
-  if(ref) objetInter += ' (Réf: ' + ref + ')';
+  var objetInter = desc + ' · H: ' + hora + 'h';
   if(station) objetInter += ' · ' + station;
   inters.unshift({
     id: 'I' + now.getTime(),
@@ -1720,6 +1759,7 @@ function submitPanne(){
 
   if(c){
     if(arret === 'oui') c.statut = 'panne';
+    c.h = hora; // update chariot horametre
     c.lastUpdate = new Date().toISOString();
   }
   save();
@@ -1728,7 +1768,6 @@ function submitPanne(){
   renderDash();
   if(document.getElementById('page-interventions').classList.contains('active')) renderInterventions();
   toast('Panne déclarée + intervention créée','ok');
-  // Notification email
   sendPanneEmail(pannes[0], c);
 }
 
@@ -1960,7 +1999,9 @@ function priseEnCompte(panneId){
   if(!isManagerOrAdmin()){ toast('Action réservée au staff maintenance','err'); return; }
   var p = pannes.find(function(x){return x.id === panneId});
   if(!p) return;
-  p.priseEnCompte = new Date().toLocaleDateString('fr-FR');
+  var now = new Date();
+  p.priseEnCompte = now.toLocaleDateString('fr-FR');
+  p.priseEnCompteAt = now.toISOString();
   p.priseEnComptePar = currentUser.name || currentUser.user;
   save();
   renderPannes();
@@ -1972,29 +2013,48 @@ function delPanne(panneId){
   var p = pannes.find(function(x){return x.id === panneId});
   if(!p) return;
   if(!confirm('Supprimer définitivement cette panne ? Cette action est irréversible.')) return;
-  // Remove panne
+
+  // Identify linked interventions BEFORE removing them
+  var linkedInterIds = inters.filter(function(it){return it.panneId === panneId}).map(function(it){return it.id});
+
+  // Remove from local arrays
   pannes = pannes.filter(function(x){return x.id !== panneId});
-  // Also remove linked intervention if exists
   inters = inters.filter(function(it){return it.panneId !== panneId});
-  // Also delete from Firebase (individually, since batch doesn't handle deletes for removed items)
+
+  // Update local storage immediately
+  localStorage.setItem('gxo4_pannes', JSON.stringify(pannes));
+  localStorage.setItem('gxo4_inters', JSON.stringify(inters));
+
+  // Explicit Firebase deletes (panne + linked interventions)
   if(window.FB && window.FB.ready){
     try {
       _suppressRemoteUpdate = true;
-      window.FB.deleteDoc(window.FB.doc(window.FB.db, 'pannes', safeId(panneId)));
-      // Delete linked inters too
-      if(p){
-        var linkedInters = inters.concat(); // already filtered, find originals
+      var promises = [];
+      promises.push(window.FB.deleteDoc(window.FB.doc(window.FB.db, 'pannes', safeId(panneId))));
+      for(var i=0;i<linkedInterIds.length;i++){
+        promises.push(window.FB.deleteDoc(window.FB.doc(window.FB.db, 'interventions', safeId(linkedInterIds[i]))));
       }
-      setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
-    } catch(e){ console.error(e); }
+      Promise.all(promises).then(function(){
+        setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
+      }).catch(function(e){
+        console.error('FB del panne err:', e);
+        _suppressRemoteUpdate = false;
+      });
+    } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
   }
-  // If chariot was in panne status and no more active pannes for it, set back to disponible
+
+  // If chariot was in panne and no more active pannes, set back to disponible
   var c = chariots.find(function(x){return x.s === p.serie});
   if(c && c.statut === 'panne'){
     var stillHasPanne = pannes.some(function(x){return x.serie === p.serie && x.statut === 'cours'});
     if(!stillHasPanne){
       c.statut = 'disponible';
       c.lastUpdate = new Date().toISOString();
+      if(window.FB && window.FB.ready){
+        try {
+          window.FB.setDoc(window.FB.doc(window.FB.db, 'chariots', safeId(c.s)), c);
+        } catch(e){ console.error(e); }
+      }
     }
   }
   save();
@@ -2008,16 +2068,16 @@ function cloturePanne(panneId){
   var p = pannes.find(function(x){return x.id === panneId});
   if(!p) return;
   if(!confirm('Clôturer cette panne ? Le chariot repassera en service.')) return;
+  var now = new Date();
   p.statut = 'resolu';
-  p.dateCloture = new Date().toLocaleDateString('fr-FR');
+  p.dateCloture = now.toLocaleDateString('fr-FR');
+  p.dateClotureAt = now.toISOString();
   p.clotureePar = currentUser.name || currentUser.user;
-  // Set chariot back to disponible
   var c = chariots.find(function(x){return x.s === p.serie});
   if(c && c.statut === 'panne'){
     c.statut = 'disponible';
-    c.lastUpdate = new Date().toISOString();
+    c.lastUpdate = now.toISOString();
   }
-  // Also update linked intervention if exists
   var linkedInter = inters.find(function(it){return it.panneId === panneId});
   if(linkedInter) linkedInter.statut = 'Terminé';
   save();
@@ -2120,8 +2180,24 @@ function closeInterFromEdit(interId){
 function deleteInter(interId){
   if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
   if(!confirm('Supprimer cette intervention ?')) return;
+  // Remove from local array
   inters = inters.filter(function(x){return x.id !== interId});
-  save();
+  // Save to local storage + Firebase
+  localStorage.setItem('gxo4_inters', JSON.stringify(inters));
+  // Explicit delete on Firebase so it doesn't come back via listener
+  if(window.FB && window.FB.ready){
+    try {
+      _suppressRemoteUpdate = true;
+      window.FB.deleteDoc(window.FB.doc(window.FB.db, 'interventions', safeId(interId)))
+        .then(function(){
+          setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
+        })
+        .catch(function(e){
+          console.error('FB delete inter err:', e);
+          _suppressRemoteUpdate = false;
+        });
+    } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
+  }
   closeModal('modal-chariot');
   renderInterventions();
   toast('Intervention supprimée','ok');
@@ -2164,7 +2240,8 @@ function sendPanneEmail(panne, chariot){
       arret: arretLabel,
       station: station,
       description: panne.desc,
-      reference: panne.ref || 'Non renseignée',
+      horametre: (panne.horametre !== undefined && panne.horametre !== null) ? (panne.horametre + ' h') : 'Non renseigné',
+      reference: (panne.horametre !== undefined && panne.horametre !== null) ? (panne.horametre + ' h') : 'Non renseigné',
       declare_par: panne.declareePar || 'Utilisateur',
       date_declaration: panne.date,
       app_url: appUrl
@@ -2289,34 +2366,52 @@ function renderStats(){
   var actives = filteredP.filter(function(p){return p.statut==='cours'}).length;
   var resolues = filteredP.filter(function(p){return p.statut!=='cours'}).length;
 
-  // Compute average resolution time (resolved pannes)
-  var totalDays = 0;
+  // Compute average resolution / prise en compte time IN HOURS
+  // Use ISO timestamps when available (priseEnCompteAt, dateClotureAt, dateTime),
+  // else fall back to DMY strings (noon assumed, precision in days)
+  function toDate(p, fieldIso, fieldDmy){
+    if(p[fieldIso]){
+      try { return new Date(p[fieldIso]); } catch(e){}
+    }
+    if(p[fieldDmy]){
+      var d = parseDMY(p[fieldDmy]);
+      if(d){ d.setHours(12,0,0,0); return d; }
+    }
+    return null;
+  }
+  var totalHoursResol = 0;
   var resolvedCount = 0;
-  var totalPECDays = 0;
+  var totalHoursPEC = 0;
   var pecCount = 0;
   for(var i=0;i<filteredP.length;i++){
     var p = filteredP[i];
-    if(p.dateCloture && (p.debut || p.date)){
-      var d1 = parseDMY(p.debut || p.date);
-      var d2 = parseDMY(p.dateCloture);
-      if(d1 && d2){
-        var days = Math.max(0, Math.round((d2 - d1)/86400000));
-        totalDays += days;
+    var dStart = toDate(p, 'dateTime', 'debut') || toDate(p, 'dateTime', 'date');
+    if(p.dateCloture || p.dateClotureAt){
+      var dEnd = toDate(p, 'dateClotureAt', 'dateCloture');
+      if(dStart && dEnd){
+        var h = Math.max(0, (dEnd - dStart) / 3600000);
+        totalHoursResol += h;
         resolvedCount++;
       }
     }
-    if(p.priseEnCompte && (p.debut || p.date)){
-      var d1 = parseDMY(p.debut || p.date);
-      var d2 = parseDMY(p.priseEnCompte);
-      if(d1 && d2){
-        var days = Math.max(0, Math.round((d2 - d1)/86400000));
-        totalPECDays += days;
+    if(p.priseEnCompte || p.priseEnCompteAt){
+      var dPec = toDate(p, 'priseEnCompteAt', 'priseEnCompte');
+      if(dStart && dPec){
+        var h = Math.max(0, (dPec - dStart) / 3600000);
+        totalHoursPEC += h;
         pecCount++;
       }
     }
   }
-  var avgDays = resolvedCount > 0 ? (totalDays / resolvedCount).toFixed(1) : '—';
-  var avgPEC = pecCount > 0 ? (totalPECDays / pecCount).toFixed(1) : '—';
+  function fmtHours(h){
+    if(h < 1) return Math.round(h*60) + 'min';
+    if(h < 24) return h.toFixed(1) + 'h';
+    var days = Math.floor(h/24);
+    var remH = Math.round(h - days*24);
+    return days + 'j' + (remH>0 ? ' ' + remH + 'h' : '');
+  }
+  var avgResol = resolvedCount > 0 ? fmtHours(totalHoursResol / resolvedCount) : '—';
+  var avgPEC = pecCount > 0 ? fmtHours(totalHoursPEC / pecCount) : '—';
 
   document.getElementById('stats-kpis').innerHTML =
     '<div class="kpi" style="--kc:var(--orange)" onclick="statsGoto(\'all\')"><div class="kpi-arrow">→</div><div class="kpi-val">'+total+'</div><div class="kpi-lbl">Pannes période</div></div>' +
@@ -2324,8 +2419,8 @@ function renderStats(){
     '<div class="kpi" style="--kc:var(--green)" onclick="statsGoto(\'resolues\')"><div class="kpi-arrow">→</div><div class="kpi-val">'+resolues+'</div><div class="kpi-lbl">Résolues</div></div>' +
     '<div class="kpi" style="--kc:var(--orange)" onclick="statsGoto(\'cost\')"><div class="kpi-arrow">→</div><div class="kpi-val" style="font-size:22px">'+fmtEuro(totalCout)+'</div><div class="kpi-lbl">Coût total</div></div>' +
     '<div class="kpi" style="--kc:var(--blue)" onclick="statsGoto(\'inter\')"><div class="kpi-arrow">→</div><div class="kpi-val">'+filteredI.length+'</div><div class="kpi-lbl">Interventions</div></div>' +
-    '<div class="kpi" style="--kc:var(--yellow)"><div class="kpi-val">'+avgDays+(avgDays!=='—'?'<span style=\"font-size:16px\">j</span>':'')+'</div><div class="kpi-lbl">Temps moyen résolution</div><div class="kpi-sub">'+resolvedCount+' panne(s) clôturée(s)</div></div>' +
-    '<div class="kpi" style="--kc:var(--blue)"><div class="kpi-val">'+avgPEC+(avgPEC!=='—'?'<span style=\"font-size:16px\">j</span>':'')+'</div><div class="kpi-lbl">Délai prise en compte</div><div class="kpi-sub">'+pecCount+' panne(s) prise(s) en compte</div></div>';
+    '<div class="kpi" style="--kc:var(--yellow)"><div class="kpi-val" style="font-size:24px">'+avgResol+'</div><div class="kpi-lbl">Temps moyen résolution</div><div class="kpi-sub">'+resolvedCount+' panne(s) clôturée(s)</div></div>' +
+    '<div class="kpi" style="--kc:var(--blue)"><div class="kpi-val" style="font-size:24px">'+avgPEC+'</div><div class="kpi-lbl">Délai prise en compte</div><div class="kpi-sub">'+pecCount+' panne(s) prise(s) en compte</div></div>';
 
   // Top chariots
   var countByChariot = {};
@@ -2641,6 +2736,20 @@ function loadAuth(){
 
 function saveAuth(){
   localStorage.setItem('gxo3_employees', JSON.stringify(employees));
+  // Push to Firebase so changes are synced and persist
+  if(window.FB && window.FB.ready){
+    try {
+      _suppressRemoteUpdate = true;
+      window.FB.setDoc(window.FB.doc(window.FB.db, 'meta', 'employees'), { list: employees })
+        .then(function(){
+          setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
+        })
+        .catch(function(e){
+          console.error('FB saveAuth err:', e);
+          _suppressRemoteUpdate = false;
+        });
+    } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
+  }
 }
 
 function saveSession(){
