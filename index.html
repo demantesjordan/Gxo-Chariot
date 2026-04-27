@@ -542,7 +542,7 @@ tbody tr:hover td{background:var(--surface2)}
     </div>
     <button class="btn btn-primary" onclick="doLogin()" style="width:100%;margin-top:8px;padding:12px">Se connecter</button>
     <div class="login-info">
-      Compte par défaut :<br><strong>admin</strong> / <strong>0000</strong>
+      Connectez-vous avec votre identifiant et code d'accès.
     </div>
   </div>
 </div>
@@ -764,6 +764,7 @@ tbody tr:hover td{background:var(--surface2)}
               <div class="form-group"><label>Code d'accès *</label><input class="finput" id="ne-code" type="text" inputmode="numeric" placeholder="4 chiffres" maxlength="6"></div>
             </div>
             <button class="btn btn-primary" onclick="addEmployee()" style="width:100%">✓ Créer le compte</button>
+            <button class="btn btn-ghost btn-sm" onclick="restoreDefaultEmployees()" style="width:100%;margin-top:8px">🔄 Restaurer les employés par défaut</button>
           </div>
           <div style="margin-top:18px;padding:12px;background:var(--orange-dim2);border:1px solid var(--orange);border-radius:8px;font-size:11px;color:var(--muted)">
             <strong style="color:var(--orange)">ℹ️ Rôles :</strong><br>
@@ -1069,8 +1070,17 @@ function safeId(s){
   return String(s || 'undef').replace(/[\/\.\#\$\[\]]/g, '_');
 }
 
+// _hasInitiallyLoaded prevents pushing local cache before we have synced WITH Firebase first
+var _hasInitiallyLoaded = false;
+
 function fbPushAll(){
   if(!window.FB || !window.FB.ready) return;
+  // SAFETY: Don't push anything until we've done at least one initial load from Firebase
+  // This prevents overwriting other devices' data with stale local cache
+  if(!_hasInitiallyLoaded){
+    console.log('fbPushAll skipped - initial load not done yet');
+    return;
+  }
   _suppressRemoteUpdate = true;
   try {
     var db = window.FB.db;
@@ -1087,10 +1097,8 @@ function fbPushAll(){
       var it = inters[i];
       if(it.id) batch.set(window.FB.doc(db, 'interventions', safeId(it.id)), it);
     }
-    batch.set(window.FB.doc(db, 'meta', 'clients'), { list: clients_list });
-    if(typeof employees !== 'undefined'){
-      batch.set(window.FB.doc(db, 'meta', 'employees'), { list: employees });
-    }
+    // NOTE: clients_list and employees are NOT pushed here
+    // They are pushed only via fbSaveClients() and fbSaveEmployees() — explicit operations
     batch.commit().then(function(){
       setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
     }).catch(function(err){
@@ -1102,6 +1110,28 @@ function fbPushAll(){
     console.error(e);
     _suppressRemoteUpdate = false;
   }
+}
+
+// Push only the clients list (called on add/delete/rename/merge client)
+function fbSaveClients(){
+  if(!window.FB || !window.FB.ready || !_hasInitiallyLoaded) return;
+  try {
+    _suppressRemoteUpdate = true;
+    window.FB.setDoc(window.FB.doc(window.FB.db, 'meta', 'clients'), { list: clients_list })
+      .then(function(){ setTimeout(function(){ _suppressRemoteUpdate = false; }, 500); })
+      .catch(function(e){ console.error(e); _suppressRemoteUpdate = false; });
+  } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
+}
+
+// Push only the employees list (called on employee CRUD)
+function fbSaveEmployees(){
+  if(!window.FB || !window.FB.ready || !_hasInitiallyLoaded) return;
+  try {
+    _suppressRemoteUpdate = true;
+    window.FB.setDoc(window.FB.doc(window.FB.db, 'meta', 'employees'), { list: employees })
+      .then(function(){ setTimeout(function(){ _suppressRemoteUpdate = false; }, 500); })
+      .catch(function(e){ console.error(e); _suppressRemoteUpdate = false; });
+  } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
 }
 
 function fbInitialLoad(cb){
@@ -1123,8 +1153,14 @@ function fbInitialLoad(cb){
     results[2].forEach(function(d){ fbInters.push(d.data()); });
 
     if(fbChariots.length === 0 && chariots.length > 0){
+      // Firestore empty AND we have local data - this is initial seed
+      // Mark as loaded BEFORE push so push goes through
+      _hasInitiallyLoaded = true;
       console.log('Firestore empty, uploading local data');
       fbPushAll();
+      // Also push clients/employees explicitly in seed scenario
+      fbSaveClients();
+      fbSaveEmployees();
       toast('Parc uploadé sur Firebase', 'ok');
     } else if(fbChariots.length > 0){
       chariots = fbChariots;
@@ -1137,7 +1173,11 @@ function fbInitialLoad(cb){
       localStorage.setItem('gxo4_inters', JSON.stringify(inters));
       localStorage.setItem('gxo4_clients', JSON.stringify(clients_list));
       localStorage.setItem('gxo3_employees', JSON.stringify(employees));
+      _hasInitiallyLoaded = true;
       refreshCurrentView();
+    } else {
+      // Both Firestore and local empty - just enable saving
+      _hasInitiallyLoaded = true;
     }
     setupFirebaseListeners();
     if(cb) cb();
@@ -1151,15 +1191,20 @@ function fbInitialLoad(cb){
 function setupFirebaseListeners(){
   if(!window.FB || !window.FB.ready) return;
   var db = window.FB.db;
+
   window.FB.onSnapshot(window.FB.collection(db, 'chariots'), function(snap){
     if(_suppressRemoteUpdate) return;
     var arr = []; snap.forEach(function(d){ arr.push(d.data()); });
-    if(arr.length > 0){
-      chariots = arr;
-      localStorage.setItem('gxo4_chariots', JSON.stringify(chariots));
-      refreshCurrentView();
+    // Defensive: don't wipe if local has data and FB returns 0 (network blip)
+    if(arr.length === 0 && chariots.length > 5){
+      console.warn('Firestore chariots empty unexpectedly, ignoring');
+      return;
     }
+    chariots = arr;
+    localStorage.setItem('gxo4_chariots', JSON.stringify(chariots));
+    refreshCurrentView();
   });
+
   window.FB.onSnapshot(window.FB.collection(db, 'pannes'), function(snap){
     if(_suppressRemoteUpdate) return;
     var arr = []; snap.forEach(function(d){ arr.push(d.data()); });
@@ -1167,6 +1212,7 @@ function setupFirebaseListeners(){
     localStorage.setItem('gxo4_pannes', JSON.stringify(pannes));
     refreshCurrentView();
   });
+
   window.FB.onSnapshot(window.FB.collection(db, 'interventions'), function(snap){
     if(_suppressRemoteUpdate) return;
     var arr = []; snap.forEach(function(d){ arr.push(d.data()); });
@@ -1174,18 +1220,33 @@ function setupFirebaseListeners(){
     localStorage.setItem('gxo4_inters', JSON.stringify(inters));
     refreshCurrentView();
   });
+
   window.FB.onSnapshot(window.FB.doc(db, 'meta', 'clients'), function(d){
     if(_suppressRemoteUpdate) return;
     if(d.exists() && d.data().list){
-      clients_list = d.data().list;
+      var list = d.data().list;
+      // Defensive: empty list when local has data is suspicious
+      if(list.length === 0 && clients_list.length > 1){
+        console.warn('Firestore clients empty unexpectedly, ignoring');
+        return;
+      }
+      clients_list = list;
       localStorage.setItem('gxo4_clients', JSON.stringify(clients_list));
       refreshCurrentView();
     }
   });
+
   window.FB.onSnapshot(window.FB.doc(db, 'meta', 'employees'), function(d){
     if(_suppressRemoteUpdate) return;
     if(d.exists() && d.data().list){
-      employees = d.data().list;
+      var list = d.data().list;
+      // Defensive: refuse to overwrite if FB returns smaller list than local
+      // This protects against a stale device pushing default employees
+      if(list.length < employees.length && employees.length > 2){
+        console.warn('Firestore employees smaller than local, ignoring (probable race condition)');
+        return;
+      }
+      employees = list;
       localStorage.setItem('gxo3_employees', JSON.stringify(employees));
     }
   });
@@ -1955,7 +2016,9 @@ function renameClient(oldName){
   var idx = clients_list.indexOf(oldName);
   if(idx >= 0) clients_list[idx] = newName;
 
+  localStorage.setItem('gxo4_clients', JSON.stringify(clients_list));
   save();
+  fbSaveClients();
   setTimeout(function(){
     refreshCurrentView();
     renderSettings();
@@ -1993,7 +2056,9 @@ function mergeClient(fromName){
   // Remove fromName from clients_list
   clients_list = clients_list.filter(function(cl){return cl !== fromName});
 
+  localStorage.setItem('gxo4_clients', JSON.stringify(clients_list));
   save();
+  fbSaveClients();
   setTimeout(function(){
     refreshCurrentView();
     renderSettings();
@@ -2030,7 +2095,8 @@ function addClient(){
   if(!v){ toast('Nom de dossier vide','err'); return; }
   if(clients_list.indexOf(v) >= 0){ toast('Ce dossier existe déjà','err'); return; }
   clients_list.push(v);
-  save();
+  localStorage.setItem('gxo4_clients', JSON.stringify(clients_list));
+  fbSaveClients();
   renderSettings();
   document.getElementById('new-client-input').value = '';
   toast('Dossier "' + v + '" ajouté','ok');
@@ -2054,7 +2120,8 @@ function delClient(i){
 
   if(!confirm(msg)) return;
   clients_list.splice(i,1);
-  save();
+  localStorage.setItem('gxo4_clients', JSON.stringify(clients_list));
+  fbSaveClients();
   renderSettings();
   toast('Dossier supprimé','ok');
 }
@@ -2455,8 +2522,10 @@ function migratePoleBoisson(){
   clients_list = clients_list.filter(function(cl){ return oldClients.indexOf(cl) < 0; });
   if(clients_list.indexOf(newClient) < 0) clients_list.unshift(newClient);
 
-  // 5. Save everything (this triggers full Firebase push)
+  // 5. Save everything
+  localStorage.setItem('gxo4_clients', JSON.stringify(clients_list));
   save();
+  fbSaveClients();
 
   // 6. Force full refresh of UI
   setTimeout(function(){
@@ -2802,6 +2871,16 @@ function deleteChariot(serie){
   if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
   if(!confirm('Supprimer définitivement ce chariot du parc ?')) return;
   chariots = chariots.filter(function(c){return c.s !== serie});
+  localStorage.setItem('gxo4_chariots', JSON.stringify(chariots));
+  // Explicit delete on Firestore
+  if(window.FB && window.FB.ready && _hasInitiallyLoaded){
+    try {
+      _suppressRemoteUpdate = true;
+      window.FB.deleteDoc(window.FB.doc(window.FB.db, 'chariots', safeId(serie)))
+        .then(function(){ setTimeout(function(){ _suppressRemoteUpdate = false; }, 500); })
+        .catch(function(e){ console.error(e); _suppressRemoteUpdate = false; });
+    } catch(e){ console.error(e); }
+  }
   save();
   closeModal('modal-chariot');
   toast('Chariot supprimé','ok');
@@ -2936,8 +3015,21 @@ var currentUser = null;
 function loadAuth(){
   var raw = localStorage.getItem('gxo3_employees');
   employees = raw ? JSON.parse(raw) : [
-    {user:'admin',name:'Administrateur',role:'admin',code:'0000'},
-    {user:'jordan',name:'Jordan Demantes',role:'manager',code:'1234'}
+    {user:'admin',name:'Administrateur',role:'admin',code:'9999'},
+    {user:'jordan',name:'Jordan Demantes',role:'admin',code:'1234'},
+    // Managers
+    {user:'antoine',name:'Antoine Duranton',role:'manager',code:'1234'},
+    {user:'anthony',name:'Anthony Tran',role:'manager',code:'1234'},
+    {user:'maxime',name:'Maxime Viandier',role:'manager',code:'1234'},
+    // Utilisateurs
+    {user:'julien',name:'Julien Mollaret',role:'user',code:'1234'},
+    {user:'samir',name:'Samir Medjahed',role:'user',code:'1234'},
+    {user:'cyril',name:'Cyril Besnard',role:'user',code:'1234'},
+    {user:'isabelle',name:'Isabelle Vernier',role:'user',code:'1234'},
+    {user:'yoan',name:'Yoan Moreira',role:'user',code:'1234'},
+    {user:'ludivine',name:'Ludivine Luce',role:'user',code:'1234'},
+    {user:'mhamed',name:"M'hamed Zibouh",role:'user',code:'1234'},
+    {user:'sofian',name:'Sofian El Khadiri',role:'user',code:'1234'}
   ];
   var sess = localStorage.getItem('gxo3_session');
   if(sess){
@@ -2947,20 +3039,8 @@ function loadAuth(){
 
 function saveAuth(){
   localStorage.setItem('gxo3_employees', JSON.stringify(employees));
-  // Push to Firebase so changes are synced and persist
-  if(window.FB && window.FB.ready){
-    try {
-      _suppressRemoteUpdate = true;
-      window.FB.setDoc(window.FB.doc(window.FB.db, 'meta', 'employees'), { list: employees })
-        .then(function(){
-          setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
-        })
-        .catch(function(e){
-          console.error('FB saveAuth err:', e);
-          _suppressRemoteUpdate = false;
-        });
-    } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
-  }
+  // Push to Firebase using dedicated function
+  fbSaveEmployees();
 }
 
 function saveSession(){
@@ -3126,6 +3206,40 @@ function delEmployee(i){
   saveAuth();
   renderEmployees();
   toast('Employé supprimé','ok');
+}
+
+
+function restoreDefaultEmployees(){
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
+  if(!confirm('Restaurer la liste complète des employés par défaut ?\nCela ajoutera les employés manquants sans toucher aux existants.')) return;
+
+  var defaults = [
+    {user:'admin',name:'Administrateur',role:'admin',code:'9999'},
+    {user:'jordan',name:'Jordan Demantes',role:'admin',code:'1234'},
+    {user:'antoine',name:'Antoine Duranton',role:'manager',code:'1234'},
+    {user:'anthony',name:'Anthony Tran',role:'manager',code:'1234'},
+    {user:'maxime',name:'Maxime Viandier',role:'manager',code:'1234'},
+    {user:'julien',name:'Julien Mollaret',role:'user',code:'1234'},
+    {user:'samir',name:'Samir Medjahed',role:'user',code:'1234'},
+    {user:'cyril',name:'Cyril Besnard',role:'user',code:'1234'},
+    {user:'isabelle',name:'Isabelle Vernier',role:'user',code:'1234'},
+    {user:'yoan',name:'Yoan Moreira',role:'user',code:'1234'},
+    {user:'ludivine',name:'Ludivine Luce',role:'user',code:'1234'},
+    {user:'mhamed',name:"M'hamed Zibouh",role:'user',code:'1234'},
+    {user:'sofian',name:'Sofian El Khadiri',role:'user',code:'1234'}
+  ];
+  var added = 0;
+  for(var i=0;i<defaults.length;i++){
+    var def = defaults[i];
+    var exists = false;
+    for(var j=0;j<employees.length;j++){
+      if(employees[j].user.toLowerCase() === def.user.toLowerCase()){ exists = true; break; }
+    }
+    if(!exists){ employees.push(def); added++; }
+  }
+  saveAuth();
+  renderEmployees();
+  toast(added + ' employé(s) ajouté(s)', 'ok');
 }
 
 function editEmployee(i){
