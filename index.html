@@ -441,11 +441,13 @@ tbody tr:hover td{background:var(--surface2)}
 
 </style>
 
-<!-- FIREBASE SDK -->
+<!-- FIREBASE SDK + OFFLINE PERSISTENCE -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, onSnapshot, writeBatch } 
-    from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { 
+    initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+    collection, doc, setDoc, getDoc, getDocs, deleteDoc, onSnapshot, writeBatch
+  } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCMRz7C019127qB5IR-QBPfK3jkqCr8fD4",
@@ -458,7 +460,24 @@ tbody tr:hover td{background:var(--surface2)}
   };
 
   const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+
+  // Initialize Firestore WITH offline persistence (IndexedDB)
+  // This makes all writes queue automatically when offline
+  // and sync when connection comes back — no manual queue needed.
+  let db;
+  try {
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    });
+    console.log('🔥 Firestore offline persistence ENABLED');
+  } catch(e) {
+    console.warn('Could not enable persistence, falling back to memory:', e);
+    // Fallback to default (memory-only)
+    const { getFirestore } = await import("https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js");
+    db = getFirestore(app);
+  }
 
   window.FB = {
     db: db,
@@ -470,11 +489,12 @@ tbody tr:hover td{background:var(--surface2)}
     deleteDoc: deleteDoc,
     onSnapshot: onSnapshot,
     writeBatch: writeBatch,
-    ready: true
+    ready: true,
+    persistent: true
   };
 
   window.dispatchEvent(new CustomEvent('firebase-ready'));
-  console.log('Firebase ready');
+  console.log('Firebase ready (offline-capable)');
 </script>
 
 
@@ -716,6 +736,7 @@ tbody tr:hover td{background:var(--surface2)}
       <div class="stabs">
         <button class="stab active" id="stab-clients" onclick="showSettingsTab('clients')">🏢 Clients</button>
         <button class="stab" id="stab-employees" onclick="showSettingsTab('employees')">👥 Employés & Accès</button>
+        <button class="stab" id="stab-notif" onclick="showSettingsTab('notif')">📧 Notifications</button>
         <button class="stab" id="stab-ajouter" onclick="showSettingsTab('ajouter')">➕ Ajouter chariot</button>
       </div>
       <div class="stab-content active" id="stab-content-clients">
@@ -772,6 +793,42 @@ tbody tr:hover td{background:var(--surface2)}
             • <strong>Manager</strong> : gestion pannes, interventions, chariots<br>
             • <strong>Technicien Fenwick</strong> : idem manager (intervenant Fenwick)<br>
             • <strong>Utilisateur</strong> : consultation et déclaration de pannes
+          </div>
+        </div>
+      </div>
+
+      <!-- Onglet Notifications -->
+      <div class="stab-content" id="stab-content-notif">
+        <div class="settings-card">
+          <h3>Notifications email — déclaration de pannes</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:18px">Configurez les destinataires des notifications automatiques envoyées à chaque déclaration de panne.</p>
+
+          <!-- TO -->
+          <div style="margin-bottom:24px">
+            <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--orange);margin-bottom:10px;font-weight:700">📨 Destinataires principaux (To)</h4>
+            <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Au moins 1 destinataire requis. Ils reçoivent l'email en destinataire principal.</p>
+            <div id="notif-to-list" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px"></div>
+            <div style="display:flex;gap:8px">
+              <input class="finput" id="notif-new-to" type="email" placeholder="ex: sav@fenwick-linde.fr" style="flex:1">
+              <button class="btn btn-primary btn-sm" onclick="addNotifEmail('to')">＋ Ajouter</button>
+            </div>
+          </div>
+
+          <!-- CC -->
+          <div style="margin-bottom:18px;padding-top:18px;border-top:1px solid var(--border)">
+            <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--blue);margin-bottom:10px;font-weight:700">📋 Copie (Cc)</h4>
+            <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Personnes en copie informative à chaque panne.</p>
+            <div id="notif-cc-list" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px"></div>
+            <div style="display:flex;gap:8px">
+              <input class="finput" id="notif-new-cc" type="email" placeholder="ex: prenom.nom@gxo.com" style="flex:1">
+              <button class="btn btn-primary btn-sm" onclick="addNotifEmail('cc')">＋ Ajouter</button>
+            </div>
+          </div>
+
+          <!-- Test -->
+          <div style="padding-top:18px;border-top:1px solid var(--border)">
+            <button class="btn btn-ghost btn-sm" onclick="testNotifEmail()" style="width:100%">📤 Envoyer un email de test</button>
+            <p style="font-size:10px;color:var(--muted);text-align:center;margin-top:8px">Vérifiez que tous les destinataires reçoivent bien la notification</p>
           </div>
         </div>
       </div>
@@ -1075,8 +1132,6 @@ var _hasInitiallyLoaded = false;
 
 function fbPushAll(){
   if(!window.FB || !window.FB.ready) return;
-  // SAFETY: Don't push anything until we've done at least one initial load from Firebase
-  // This prevents overwriting other devices' data with stale local cache
   if(!_hasInitiallyLoaded){
     console.log('fbPushAll skipped - initial load not done yet');
     return;
@@ -1097,15 +1152,21 @@ function fbPushAll(){
       var it = inters[i];
       if(it.id) batch.set(window.FB.doc(db, 'interventions', safeId(it.id)), it);
     }
-    // NOTE: clients_list and employees are NOT pushed here
-    // They are pushed only via fbSaveClients() and fbSaveEmployees() — explicit operations
+    // Note: with persistent cache, batch.commit() returns IMMEDIATELY when offline
+    // The write is queued in IndexedDB and auto-synced when network returns
+    // The .then() / .catch() only resolve once the SERVER confirms (could be hours later)
     batch.commit().then(function(){
+      console.log('✓ Firebase sync confirmed');
       setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
+      updateConnectivityIndicator(true);
     }).catch(function(err){
-      console.error('Firestore push err:', err);
+      // True error (not just offline) - offline writes don't trigger this with persistent cache
+      console.error('Firestore commit err:', err);
       _suppressRemoteUpdate = false;
-      toast('Erreur Firebase: ' + (err.message || err), 'err');
+      // Don't show toast — the write is still queued in IndexedDB, will retry
     });
+    // Optimistic: release suppression quickly so UI updates feel instant
+    setTimeout(function(){ _suppressRemoteUpdate = false; }, 800);
   } catch(e){
     console.error(e);
     _suppressRemoteUpdate = false;
@@ -1302,16 +1363,47 @@ setInterval(tick,1000);tick();
 
 // Firebase connection indicator
 window.addEventListener('firebase-ready', function(){
-  var el = document.getElementById('fb-status');
-  if(el){ el.textContent = '🟢'; el.title = 'Firebase connecté'; }
+  updateConnectivityIndicator();
 });
 setTimeout(function(){
-  var el = document.getElementById('fb-status');
-  if(el && (!window.FB || !window.FB.ready)){
-    el.textContent = '🔴';
-    el.title = 'Firebase hors ligne (mode local)';
-  }
+  updateConnectivityIndicator();
 }, 5000);
+
+// ══════════════════════════════════════════
+// CONNECTIVITY MONITOR (online/offline)
+// ══════════════════════════════════════════
+function updateConnectivityIndicator(forceOnline){
+  var el = document.getElementById('fb-status');
+  if(!el) return;
+  var isOnline = forceOnline === true || navigator.onLine;
+  if(window.FB && window.FB.ready && isOnline){
+    el.textContent = '🟢';
+    el.title = 'En ligne — synchronisation active';
+  } else if(window.FB && window.FB.ready && !isOnline){
+    el.textContent = '🟡';
+    el.title = 'Hors ligne — vos modifications seront synchronisées au retour de la connexion';
+  } else {
+    el.textContent = '🔴';
+    el.title = 'Firebase non chargé';
+  }
+}
+
+// React to online/offline events
+window.addEventListener('online', function(){
+  console.log('📡 Connexion rétablie');
+  updateConnectivityIndicator(true);
+  toast('📡 Connexion rétablie — synchronisation en cours', 'ok');
+});
+
+window.addEventListener('offline', function(){
+  console.log('📡 Connexion perdue');
+  updateConnectivityIndicator(false);
+  toast('📴 Hors ligne — vos modifications sont sauvegardées localement', 'ok');
+});
+
+// Initial check
+setTimeout(updateConnectivityIndicator, 2000);
+
 
 
 // ══════════════════════════════════════════
@@ -2437,12 +2529,154 @@ function closeIntervention(interId){
 
 
 
+
+// ══════════════════════════════════════════
+// NOTIFICATIONS CONFIG — TO/CC list
+// ══════════════════════════════════════════
+function loadNotifConfig(){
+  // Local cache first
+  var raw = localStorage.getItem('gxo3_notif_config');
+  if(raw){
+    try { notif_config = JSON.parse(raw); } catch(e){ notif_config = null; }
+  }
+  if(!notif_config) notif_config = JSON.parse(JSON.stringify(NOTIF_CONFIG_DEFAULT));
+
+  // Pull from Firestore if available
+  if(window.FB && window.FB.ready){
+    try {
+      window.FB.getDoc(window.FB.doc(window.FB.db, 'meta', 'notifications'))
+        .then(function(d){
+          if(d.exists() && d.data().config){
+            notif_config = d.data().config;
+            localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
+            renderNotifConfig();
+          } else {
+            // Seed Firestore with default if empty
+            saveNotifConfig();
+          }
+        })
+        .catch(function(e){ console.warn('Notif config load:', e); });
+
+      // Listen for live updates
+      window.FB.onSnapshot(window.FB.doc(window.FB.db, 'meta', 'notifications'), function(d){
+        if(_suppressRemoteUpdate) return;
+        if(d.exists() && d.data().config){
+          notif_config = d.data().config;
+          localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
+          renderNotifConfig();
+        }
+      });
+    } catch(e){ console.error(e); }
+  }
+}
+
+function saveNotifConfig(){
+  if(!notif_config) return;
+  localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
+  if(window.FB && window.FB.ready && _hasInitiallyLoaded){
+    try {
+      _suppressRemoteUpdate = true;
+      window.FB.setDoc(window.FB.doc(window.FB.db, 'meta', 'notifications'), { config: notif_config })
+        .then(function(){ setTimeout(function(){ _suppressRemoteUpdate = false; }, 500); })
+        .catch(function(e){ console.error('Notif save err:', e); _suppressRemoteUpdate = false; });
+    } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
+  }
+}
+
+function isValidEmail(e){
+  if(!e) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+}
+
+function addNotifEmail(kind){
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
+  var inputId = (kind === 'to') ? 'notif-new-to' : 'notif-new-cc';
+  var input = document.getElementById(inputId);
+  if(!input) return;
+  var email = input.value.trim().toLowerCase();
+  if(!isValidEmail(email)){ toast('Email invalide','err'); return; }
+  if(!notif_config) notif_config = JSON.parse(JSON.stringify(NOTIF_CONFIG_DEFAULT));
+  if(!notif_config[kind]) notif_config[kind] = [];
+  // Anti-doublon (cherche dans to ET cc)
+  var allEmails = (notif_config.to || []).concat(notif_config.cc || []);
+  for(var i=0;i<allEmails.length;i++){
+    if(allEmails[i].toLowerCase() === email){
+      toast('Cet email est déjà dans la liste','err');
+      return;
+    }
+  }
+  notif_config[kind].push(email);
+  saveNotifConfig();
+  input.value = '';
+  renderNotifConfig();
+  toast('Email ajouté','ok');
+}
+
+function removeNotifEmail(kind, idx){
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
+  if(!notif_config || !notif_config[kind]) return;
+  if(kind === 'to' && notif_config.to.length === 1){
+    if(!confirm('Supprimer le dernier destinataire principal ? Aucun email ne sera envoyé.')) return;
+  }
+  notif_config[kind].splice(idx, 1);
+  saveNotifConfig();
+  renderNotifConfig();
+  toast('Email supprimé','ok');
+}
+
+function renderNotifConfig(){
+  var toList = document.getElementById('notif-to-list');
+  var ccList = document.getElementById('notif-cc-list');
+  if(!toList || !ccList) return; // page not visible
+  if(!notif_config) notif_config = JSON.parse(JSON.stringify(NOTIF_CONFIG_DEFAULT));
+
+  function renderEmailTags(arr, kind){
+    if(!arr || arr.length === 0) return '<p style="font-size:12px;color:var(--muted);margin:8px 0">Aucun email</p>';
+    return arr.map(function(e, i){
+      return '<div class="tag" style="display:inline-flex;align-items:center;gap:6px;font-family:var(--font-m);font-size:12px"><span>'+e+'</span><span class="tdel" onclick="removeNotifEmail(\''+kind+'\','+i+')">×</span></div>';
+    }).join('');
+  }
+  toList.innerHTML = renderEmailTags(notif_config.to, 'to');
+  ccList.innerHTML = renderEmailTags(notif_config.cc, 'cc');
+}
+
+function testNotifEmail(){
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
+  if(!confirm('Envoyer un email de test à tous les destinataires configurés ?')) return;
+  // Send a fake panne notification
+  var fakePanne = {
+    serie: 'TEST-001',
+    desc: 'Ceci est un test de la configuration email — vous pouvez ignorer ce message.',
+    date: new Date().toLocaleDateString('fr-FR'),
+    urgence: 'normale',
+    arret: 'non',
+    station: 'Test',
+    horametre: 0,
+    declareePar: currentUser ? (currentUser.name || currentUser.user) : 'Test',
+    client: 'TEST'
+  };
+  var fakeChariot = { t: 'TEST', s: 'TEST-001', i: 'TEST', cl: 'TEST' };
+  sendPanneEmail(fakePanne, fakeChariot);
+}
+
 // ══════════════════════════════════════════
 // EMAILJS - Notification pannes
 // ══════════════════════════════════════════
 var EMAILJS_SERVICE_ID = 'service_kqfu72g';
 var EMAILJS_TEMPLATE_ID = 'template_avti9jk';
-var PANNE_NOTIFY_EMAILS = ['jordan.demantes@gxo.com', 'alison.delaise@gxo.com'];
+
+// Configuration des notifications email - éditable depuis Paramètres > Notifications
+// Stockée dans Firestore meta/notifications pour synchro multi-device
+var NOTIF_CONFIG_DEFAULT = {
+  to: ['sav@fenwick-linde.fr'],
+  cc: [
+    'anthony.tran@gxo.com',
+    'antoine.duranton@gxo.com',
+    'jordan.demantes@gxo.com',
+    'jonathan.revelin@fenwick-linde.fr'
+  ]
+};
+var notif_config = null; // sera initialisé via loadNotifConfig()
 
 function sendPanneEmail(panne, chariot){
   if(!window.emailjs){ console.warn('EmailJS non chargé'); return; }
@@ -2452,8 +2686,14 @@ function sendPanneEmail(panne, chariot){
     var arretLabel = panne.arret === 'oui' ? '⚠️ OUI' : 'Non';
     var station = panne.station || 'Non précisé';
 
+    // Get config (with fallback to default)
+    var cfg = (notif_config && notif_config.to && notif_config.to.length) ? notif_config : NOTIF_CONFIG_DEFAULT;
+    var toEmail = (cfg.to || []).join(',');
+    var ccEmail = (cfg.cc || []).join(',');
+
     var params = {
-      to_email: PANNE_NOTIFY_EMAILS.join(', '),
+      to_email: toEmail,
+      cc_email: ccEmail,
       chariot_type: chariot ? chariot.t : '—',
       chariot_serie: panne.serie,
       chariot_interne: chariot ? (chariot.i || '—') : '—',
@@ -3048,35 +3288,91 @@ function saveSession(){
   else localStorage.removeItem('gxo3_session');
 }
 
-function doLogin(){
-  var u = document.getElementById('lg-user').value.trim().toLowerCase();
-  var c = document.getElementById('lg-code').value.trim();
-  var err = document.getElementById('login-err');
-  var found = null;
+function findEmployeeLocal(u, c){
   for(var i=0;i<employees.length;i++){
     if(employees[i].user.toLowerCase() === u && employees[i].code === c){
-      found = employees[i]; break;
+      return employees[i];
     }
   }
-  if(!found){
-    err.textContent = 'Identifiant ou code invalide';
-    err.classList.add('show');
-    return;
-  }
-  err.classList.remove('show');
+  return null;
+}
+
+function completeLogin(found){
+  document.getElementById('login-err').classList.remove('show');
   currentUser = {user:found.user, name:found.name, role:found.role};
   saveSession();
   document.getElementById('login-screen').classList.add('hidden');
   updateUserMenu();
   load();
   renderDash();
-  // Pull latest data from Firebase
   fbInitialLoad(function(){ refreshCurrentView(); });
-  // Handle pending QR scan
   if(window._pendingPanneSerie){
     var s = window._pendingPanneSerie;
     window._pendingPanneSerie = null;
     setTimeout(function(){ openNewPanneModalForChariot(s); }, 400);
+  }
+}
+
+function doLogin(){
+  var u = document.getElementById('lg-user').value.trim().toLowerCase();
+  var c = document.getElementById('lg-code').value.trim();
+  var err = document.getElementById('login-err');
+  var btn = document.querySelector('#login-screen .btn-primary');
+
+  // 1. Try local first (fast path)
+  var found = findEmployeeLocal(u, c);
+  if(found){
+    completeLogin(found);
+    return;
+  }
+
+  // 2. Not found locally — fetch fresh from Firebase before failing
+  // This handles the case where a new device has only default employees
+  if(window.FB && window.FB.ready){
+    err.textContent = 'Vérification...';
+    err.style.color = 'var(--muted)';
+    err.classList.add('show');
+    if(btn){ btn.disabled = true; btn.textContent = 'Connexion...'; }
+
+    window.FB.getDoc(window.FB.doc(window.FB.db, 'meta', 'employees'))
+      .then(function(d){
+        if(btn){ btn.disabled = false; btn.textContent = 'Se connecter'; }
+        err.style.color = '';
+        if(d.exists() && d.data().list && d.data().list.length > 0){
+          // Update local employees from Firebase
+          employees = d.data().list;
+          localStorage.setItem('gxo3_employees', JSON.stringify(employees));
+          // Try again with fresh list
+          var found2 = findEmployeeLocal(u, c);
+          if(found2){
+            completeLogin(found2);
+            return;
+          }
+        }
+        err.textContent = 'Identifiant ou code invalide';
+        err.classList.add('show');
+      })
+      .catch(function(e){
+        if(btn){ btn.disabled = false; btn.textContent = 'Se connecter'; }
+        err.style.color = '';
+        console.error('FB login fetch err:', e);
+        err.textContent = 'Identifiant ou code invalide';
+        err.classList.add('show');
+      });
+  } else {
+    // Firebase not ready — wait briefly then retry once
+    err.textContent = 'Connexion en cours...';
+    err.style.color = 'var(--muted)';
+    err.classList.add('show');
+    setTimeout(function(){
+      err.style.color = '';
+      if(window.FB && window.FB.ready){
+        doLogin(); // retry with Firebase
+      } else {
+        err.textContent = 'Service hors ligne — réessayez';
+        err.classList.add('show');
+      }
+    }, 1500);
   }
 }
 
@@ -3143,6 +3439,7 @@ function showSettingsTab(tab){
   document.getElementById('stab-content-'+tab).classList.add('active');
   if(tab==='employees') renderEmployees();
   if(tab==='clients') renderSettings();
+  if(tab==='notif') renderNotifConfig();
   if(tab==='ajouter') populateFormSelects();
 }
 
@@ -3257,6 +3554,7 @@ function editEmployee(i){
 // INIT
 // ══════════════════════════════════════════
 loadAuth();
+loadNotifConfig();
 if(currentUser){
   document.getElementById('login-screen').classList.add('hidden');
   updateUserMenu();
