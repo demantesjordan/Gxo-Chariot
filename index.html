@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="app-version" content="2026.04.28.1434">
 <meta name="theme-color" content="#0a0a0a">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>GXO Chariot</title>
@@ -678,7 +682,7 @@ tbody tr:hover td{background:var(--surface2)}
         </select>
         <select class="finput" id="inter-filter-type" onchange="renderInterventions()" style="max-width:100%;min-width:0;flex:1 1 140px">
           <option value="">Tous types</option>
-          <option>Devis</option><option>Entretien</option>
+          <option>Devis</option><option>Entretien</option><option>Contrat</option>
         </select>
         <select class="finput" id="inter-filter-statut" onchange="renderInterventions()" style="max-width:100%;min-width:0;flex:1 1 140px">
           <option value="">Tous statuts</option>
@@ -687,7 +691,7 @@ tbody tr:hover td{background:var(--surface2)}
       </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>N° Série</th><th>Type</th><th>Client</th><th>Intervention</th><th>Objet</th><th>Mois</th><th>Statut</th><th>Docs</th><th></th></tr></thead>
+          <thead><tr><th>N° Série</th><th>Type</th><th>Client</th><th>Intervention</th><th>Objet</th><th>Mois</th><th>Statut</th><th>Com Fenwick</th><th>👁</th><th></th></tr></thead>
           <tbody id="inter-tbody"></tbody>
         </table>
       </div>
@@ -825,10 +829,11 @@ tbody tr:hover td{background:var(--surface2)}
             </div>
           </div>
 
-          <!-- Test -->
-          <div style="padding-top:18px;border-top:1px solid var(--border)">
+          <!-- Synchro + Test -->
+          <div style="padding-top:18px;border-top:1px solid var(--border);display:flex;gap:8px;flex-direction:column">
+            <button class="btn btn-ghost btn-sm" onclick="forceReloadNotifConfig()" style="width:100%">🔄 Recharger depuis Firebase</button>
             <button class="btn btn-ghost btn-sm" onclick="testNotifEmail()" style="width:100%">📤 Envoyer un email de test</button>
-            <p style="font-size:10px;color:var(--muted);text-align:center;margin-top:8px">Vérifiez que tous les destinataires reçoivent bien la notification</p>
+            <p style="font-size:10px;color:var(--muted);text-align:center;margin-top:4px">En cas de désynchronisation entre appareils, cliquez "Recharger depuis Firebase"</p>
           </div>
         </div>
       </div>
@@ -966,7 +971,7 @@ tbody tr:hover td{background:var(--surface2)}
         </div>
         <div class="form-group"><label>Type intervention *</label>
           <select class="fselect" id="ni-type">
-            <option>Devis</option><option>Entretien</option>
+            <option>Devis</option><option>Entretien</option><option>Contrat</option>
           </select>
         </div>
       </div>
@@ -1103,20 +1108,65 @@ let f_client='all';
 let pendingFiles = {}; // key -> [{name,size,dataUrl}]
 
 function load(){
-  chariots = JSON.parse(localStorage.getItem('gxo4_chariots')||'null') || PARC0.map((c,i)=>({...c,id:i,statut:'disponible',panneDesc:'',lastUpdate:new Date().toISOString(),salle:c.salle||''}));
-  // All chariots start in "disponible" state — clean slate
-  pannes = JSON.parse(localStorage.getItem('gxo4_pannes')||'null') || PANNES0;
-  inters = JSON.parse(localStorage.getItem('gxo4_inters')||'null') || INTERS0;
-  clients_list = JSON.parse(localStorage.getItem('gxo4_clients')||'null') || ['PÔLE BOISSON','SAMSUNG','MULET'];
-  zones_list = JSON.parse(localStorage.getItem('gxo3_zones')||'null') || ['Zone Redbull','Zone Pepsi','Zone Samsung','Zone Sodiaal'];
-  save();
+  // Chariots
+  try {
+    var rawCh = localStorage.getItem('gxo4_chariots');
+    if(rawCh){
+      var parsed = JSON.parse(rawCh);
+      chariots = (Array.isArray(parsed) && parsed.length > 0) ? parsed : null;
+    }
+  } catch(e){ console.error('Parse chariots:', e); chariots = null; }
+  if(!chariots){
+    chariots = PARC0.map(function(c,i){
+      return Object.assign({}, c, {
+        id: i, statut: 'disponible', panneDesc: '',
+        lastUpdate: new Date().toISOString(), salle: c.salle || ''
+      });
+    });
+  }
+
+  // Pannes
+  try {
+    var rawP = localStorage.getItem('gxo4_pannes');
+    if(rawP){
+      var parsed = JSON.parse(rawP);
+      pannes = Array.isArray(parsed) ? parsed : (typeof PANNES0 !== 'undefined' ? PANNES0 : []);
+    } else {
+      pannes = (typeof PANNES0 !== 'undefined') ? PANNES0 : [];
+    }
+  } catch(e){ console.error('Parse pannes:', e); pannes = []; }
+
+  // Interventions
+  try {
+    var rawI = localStorage.getItem('gxo4_inters');
+    if(rawI){
+      var parsed = JSON.parse(rawI);
+      inters = Array.isArray(parsed) ? parsed : (typeof INTERS0 !== 'undefined' ? INTERS0 : []);
+    } else {
+      inters = (typeof INTERS0 !== 'undefined') ? INTERS0 : [];
+    }
+  } catch(e){ console.error('Parse inters:', e); inters = []; }
+
+  // Clients
+  try {
+    var rawCl = localStorage.getItem('gxo4_clients');
+    if(rawCl){
+      var parsed = JSON.parse(rawCl);
+      clients_list = (Array.isArray(parsed) && parsed.length > 0) ? parsed : ['PÔLE BOISSON','SAMSUNG','MULET'];
+    } else {
+      clients_list = ['PÔLE BOISSON','SAMSUNG','MULET'];
+    }
+  } catch(e){ console.error('Parse clients:', e); clients_list = ['PÔLE BOISSON','SAMSUNG','MULET']; }
+
+  zones_list = ['Zone Redbull','Zone Pepsi','Zone Samsung','Zone Sodiaal'];
+  // save() ne pousse plus zones obsolètes
 }
 function save(){
   localStorage.setItem('gxo4_chariots',JSON.stringify(chariots));
   localStorage.setItem('gxo4_pannes',JSON.stringify(pannes));
   localStorage.setItem('gxo4_inters',JSON.stringify(inters));
   localStorage.setItem('gxo4_clients',JSON.stringify(clients_list));
-  localStorage.setItem('gxo3_zones',JSON.stringify(zones_list));
+  // gxo3_zones removed (deprecated)
   fbPushAll();
 }
 
@@ -1403,6 +1453,79 @@ window.addEventListener('offline', function(){
 
 // Initial check
 setTimeout(updateConnectivityIndicator, 2000);
+
+// ══════════════════════════════════════════
+// AUTO-UPDATE CHECK — empêche les caches obsolètes (surtout iOS Safari)
+// ══════════════════════════════════════════
+var APP_VERSION = "2026.04.28.1434";
+window.APP_VERSION = APP_VERSION;
+
+function checkForUpdate(silent){
+  // Fetch the HTML with cache-busting to find the latest version
+  var url = window.location.pathname + '?_v=' + Date.now();
+  fetch(url, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } })
+    .then(function(r){ return r.text(); })
+    .then(function(html){
+      var m = html.match(/<meta\s+name="app-version"\s+content="([^"]+)"/);
+      if(m && m[1] && m[1] !== APP_VERSION){
+        console.log('Nouvelle version détectée:', m[1], 'vs courante:', APP_VERSION);
+        showUpdateBanner(m[1]);
+      } else if(!silent){
+        toast('Application à jour ('+APP_VERSION+')', 'ok');
+      }
+    })
+    .catch(function(e){
+      console.warn('Update check failed:', e);
+      if(!silent) toast('Vérification impossible', 'err');
+    });
+}
+
+function showUpdateBanner(newVersion){
+  // Avoid duplicate banner
+  if(document.getElementById('update-banner')) return;
+  var banner = document.createElement('div');
+  banner.id = 'update-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(90deg,#ff6b00,#ff8833);color:#000;padding:14px 16px;text-align:center;z-index:9999;font-weight:700;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding-top:calc(14px + env(safe-area-inset-top,0px))';
+  banner.innerHTML = '<span>🚀 Nouvelle version disponible !</span><button id="update-btn" style="background:#000;color:#ff6b00;border:none;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">Mettre à jour</button><button id="update-close" style="background:transparent;color:#000;border:1px solid rgba(0,0,0,.3);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">Plus tard</button>';
+  document.body.appendChild(banner);
+  document.getElementById('update-btn').onclick = function(){
+    forceReload();
+  };
+  document.getElementById('update-close').onclick = function(){
+    banner.remove();
+  };
+}
+
+function forceReload(){
+  // Aggressive cache clearing for iOS Safari
+  try {
+    if('caches' in window){
+      caches.keys().then(function(names){
+        for(var i=0;i<names.length;i++) caches.delete(names[i]);
+      });
+    }
+  } catch(e){}
+  // Reload with cache-busting query string
+  var sep = window.location.href.indexOf('?') >= 0 ? '&' : '?';
+  window.location.href = window.location.href.split('#')[0].split('?')[0] + '?_reload=' + Date.now();
+}
+
+// Check for updates on app start (after a small delay)
+setTimeout(function(){ checkForUpdate(true); }, 3000);
+
+// Check periodically (every 5 minutes when app is open)
+setInterval(function(){ checkForUpdate(true); }, 5 * 60 * 1000);
+
+// Check when user comes back to the tab
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible'){
+    setTimeout(function(){ checkForUpdate(true); }, 1000);
+  }
+});
+
+// Manual check function (can be called from a button if needed)
+window.checkUpdateNow = function(){ checkForUpdate(false); };
+
 
 
 
@@ -1698,6 +1821,74 @@ function savePanneDetail(idx){
 // ══════════════════════════════════════════
 // CARTE D'IDENTITÉ CHARIOT
 // ══════════════════════════════════════════
+
+// Modal lecture seule pour voir le détail d'une intervention (accessible à tous les rôles)
+function showInterDetails(interId){
+  var it = inters.find(function(x){return x.id === interId});
+  if(!it){ toast('Intervention introuvable','err'); return; }
+  var c = chariots.find(function(x){return x.s === it.serie});
+  var p = it.panneId ? pannes.find(function(x){return x.id === it.panneId}) : null;
+
+  var html = '<div style="padding:6px 0">';
+  html += '<div style="background:#0a0a0a;color:#fff;padding:14px 16px;border-radius:8px;margin-bottom:14px">';
+  html += '<div style="font-size:11px;color:var(--orange);font-weight:700;letter-spacing:.08em">CHARIOT</div>';
+  html += '<div style="font-size:18px;font-weight:800;margin-top:2px">'+(c?c.t:it.type)+'</div>';
+  html += '<div style="font-size:11px;color:#aaa">'+(it.client)+(c&&c.i?' · N° interne '+c.i:'')+'</div>';
+  html += '<div style="font-family:var(--font-m);font-size:10px;color:#666;margin-top:4px">Série: '+it.serie+'</div>';
+  html += '</div>';
+
+  function row(lbl, val){
+    return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--muted)">'+lbl+'</span><span style="font-weight:600;text-align:right">'+(val||'—')+'</span></div>';
+  }
+  html += row('Type', it.inter_type);
+  html += row('Statut', '<span class="badge '+(({Terminé:"badge-green","En cours":"badge-yellow","Non traité":"badge-red","Devis envoyé client":"badge-blue"})[it.statut]||"badge-gray")+'">'+it.statut+'</span>');
+  html += row('Mois', it.mois);
+  html += row('Date', it.date || '—');
+  html += row('Intervenant', it.intervenant || '—');
+  html += row('Coût', fmtEuro(it.cout || 0));
+
+  html += '<div style="margin-top:14px;padding:14px;background:var(--surface-2);border-left:3px solid var(--orange);border-radius:6px">';
+  html += '<div style="font-size:11px;color:var(--orange);font-weight:700;letter-spacing:.05em;margin-bottom:6px">OBJET / DESCRIPTION</div>';
+  html += '<div style="font-size:13px;line-height:1.6;white-space:pre-wrap">'+(it.objet||'—')+'</div>';
+  html += '</div>';
+
+  if(p){
+    html += '<div style="margin-top:14px;padding:14px;background:#1a0d0d;border-left:3px solid var(--red);border-radius:6px">';
+    html += '<div style="font-size:11px;color:var(--red);font-weight:700;letter-spacing:.05em;margin-bottom:6px">PANNE LIÉE</div>';
+    html += '<div style="font-size:12px;color:var(--muted)">Déclarée le '+p.date+(p.declareePar?' par '+p.declareePar:'')+'</div>';
+    if(p.station) html += '<div style="font-size:12px;margin-top:4px">📍 '+p.station+'</div>';
+    if(p.horametre !== undefined && p.horametre !== null) html += '<div style="font-size:12px">⏱ Horamètre : '+p.horametre+' h</div>';
+    html += '</div>';
+  }
+
+  if(it.docs && it.docs.length){
+    html += '<div style="margin-top:14px">';
+    html += '<div style="font-size:11px;color:var(--blue);font-weight:700;letter-spacing:.05em;margin-bottom:8px">💬 COMMENTAIRES & FICHIERS FENWICK ('+it.docs.length+')</div>';
+    for(var i=0;i<it.docs.length;i++){
+      var d = it.docs[i];
+      var iconType = (d.type||'').indexOf('image')>=0 ? '🖼' : (d.type||'').indexOf('pdf')>=0 ? '📄' : '📎';
+      html += '<div style="background:var(--surface-2);padding:10px;border-radius:6px;margin-bottom:6px;display:flex;align-items:center;gap:10px">';
+      html += '<span style="font-size:18px">'+iconType+'</span>';
+      html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(d.name||'Fichier '+(i+1))+'</div>';
+      if(d.size) html += '<div style="font-size:10px;color:var(--muted)">'+(Math.round(d.size/1024))+' Ko</div>';
+      html += '</div>';
+      if(d.data){
+        html += '<a href="'+d.data+'" download="'+(d.name||'fichier')+'" class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:11px">⬇</a>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  } else {
+    html += '<div style="margin-top:14px;padding:14px;text-align:center;color:var(--muted);font-size:12px;background:var(--surface-2);border-radius:6px">Aucun commentaire ou fichier Fenwick pour le moment</div>';
+  }
+
+  html += '</div>';
+  document.getElementById('mid-title').textContent = 'Intervention · '+it.inter_type;
+  document.getElementById('mid-sub').textContent = it.serie + ' · ' + it.client;
+  document.getElementById('mid-body').innerHTML = html;
+  openModal('modal-id');
+}
+
 function openCarteId(serie){
   // Normalize serie (trim whitespace, ensure string)
   var targetSerie = String(serie || '').trim();
@@ -1961,6 +2152,29 @@ function submitPanne(){
 // ══════════════════════════════════════════
 // INTERVENTIONS
 // ══════════════════════════════════════════
+
+function filterStatutInter(statut){
+  var sel = document.getElementById('inter-filter-statut');
+  if(sel){ sel.value = statut; renderInterventions(); }
+}
+
+// Sous-onglets de la page Interventions
+var _interSubtab = 'all';
+function switchInterSubtab(tab){
+  _interSubtab = tab;
+  var t1 = document.getElementById('inter-subtab-all');
+  var t2 = document.getElementById('inter-subtab-devis');
+  if(tab === 'all'){
+    t1.classList.add('active'); t1.style.borderBottom = '2px solid var(--orange)';
+    t2.classList.remove('active'); t2.style.borderBottom = '2px solid transparent';
+  } else {
+    t1.classList.remove('active'); t1.style.borderBottom = '2px solid transparent';
+    t2.classList.add('active'); t2.style.borderBottom = '2px solid var(--orange)';
+  }
+  renderInterventions();
+}
+
+
 function renderInterventions(){
   var cf = document.getElementById('inter-filter-client');
   if(cf.children.length <= 1){
@@ -1974,16 +2188,30 @@ function renderInterventions(){
   var ftype = document.getElementById('inter-filter-type').value;
   var fst = document.getElementById('inter-filter-statut').value;
   var filtered = inters.filter(function(it){
-    return (!fcl || it.client === fcl) && (!ftype || it.inter_type === ftype) && (!fst || it.statut === fst);
+    if(fcl && it.client !== fcl) return false;
+    if(ftype && it.inter_type !== ftype) return false;
+    if(fst && it.statut !== fst) return false;
+    // Devis subtab: only show 'Devis envoyé client' AND non-Terminé
+    if(_interSubtab === 'devis'){
+      if(it.statut !== 'Devis envoyé client') return false;
+    }
+    return true;
   });
+  // Update devis count badge
+  var devisCount = inters.filter(function(it){return it.statut === 'Devis envoyé client'}).length;
+  var badge = document.getElementById('devis-count-badge');
+  if(badge){
+    badge.textContent = devisCount;
+    badge.style.display = devisCount > 0 ? 'inline-block' : 'none';
+  }
 
   // KPIs reflect FILTERED data
   var totCout = filtered.reduce(function(a,it){return a + (it.cout||0)}, 0);
   var byType = {};
-  var types = ['Devis','Entretien'];
+  var types = ['Devis','Entretien','Contrat'];
   for(var i=0;i<types.length;i++) byType[types[i]] = filtered.filter(function(x){return x.inter_type === types[i]}).length;
   var byStatut = {};
-  ['Terminé','En cours','Non traité'].forEach(function(s){
+  ['Terminé','En cours','Non traité','Devis envoyé client'].forEach(function(s){
     byStatut[s] = filtered.filter(function(x){return x.statut === s}).length;
   });
 
@@ -1993,27 +2221,31 @@ function renderInterventions(){
     '<div class="ik"><div class="v" style="color:var(--blue)">'+(byType['Devis']||0)+'</div><div class="l">Devis / Réparations</div></div>' +
     '<div class="ik"><div class="v" style="color:var(--green)">'+(byType['Entretien']||0)+'</div><div class="l">Entretiens</div></div>' +
     '<div class="ik"><div class="v" style="color:var(--green)">'+(byStatut['Terminé']||0)+'</div><div class="l">Terminées</div></div>' +
+    '<div class="ik" onclick="filterStatutInter(\'Devis envoyé client\')" style="cursor:pointer"><div class="v" style="color:var(--blue)">'+(byStatut['Devis envoyé client']||0)+'</div><div class="l">Devis envoyés client</div></div>' +
     '<div class="ik"><div class="v" style="color:var(--yellow)">'+(byStatut['En cours']||0)+'</div><div class="l">En cours</div></div>' +
     '<div class="ik"><div class="v" style="color:var(--red)">'+(byStatut['Non traité']||0)+'</div><div class="l">Non traitées</div></div>';
   document.getElementById('inter-kpis').innerHTML = kpisHtml;
 
-  const sb={Terminé:'badge-green','En cours':'badge-yellow','Non traité':'badge-red'};
+  const sb={Terminé:'badge-green','En cours':'badge-yellow','Non traité':'badge-red','Devis envoyé client':'badge-blue'};
   document.getElementById('inter-tbody').innerHTML = filtered.map(function(it){
-    var docsCell = (it.docs && it.docs.length) ? '<span style="color:var(--blue);cursor:pointer" onclick="event.stopPropagation();showDocs(\''+it.id+'\')" title="'+it.docs.length+' doc(s)">📎 '+it.docs.length+'</span>' : '—';
+    var docsCell = (it.docs && it.docs.length) ? '<span style="color:var(--blue);cursor:pointer" onclick="event.stopPropagation();showDocs(\''+it.id+'\')" title="Voir commentaires/fichiers Fenwick">💬 '+it.docs.length+'</span>' : '<span style="color:var(--muted);font-size:10px">—</span>';
     var canEditThis = currentUser && (currentUser.role === 'admin' || currentUser.role === 'technicien');
-    var editCell = canEditThis
-      ? '<button class="btn btn-ghost btn-sm" style="padding:4px 9px;font-size:11px" onclick="event.stopPropagation();openEditInter(\''+it.id+'\')">✎</button>'
-      : '';
+    var actionsCell = '<div style="display:flex;gap:4px;justify-content:flex-end">';
+    actionsCell += '<button class="btn btn-ghost btn-sm" style="padding:4px 9px;font-size:11px" onclick="event.stopPropagation();showInterDetails(\''+it.id+'\')" title="Voir l\'incident">👁</button>';
+    if(canEditThis){
+      actionsCell += '<button class="btn btn-ghost btn-sm" style="padding:4px 9px;font-size:11px" onclick="event.stopPropagation();openEditInter(\''+it.id+'\')" title="Modifier">✎</button>';
+    }
+    actionsCell += '</div>';
     return '<tr>' +
       '<td class="mono">'+it.serie.slice(-8)+'</td>' +
       '<td style="font-weight:600">'+it.type+'</td>' +
-      '<td><span class="cbadge cb-'+it.client+'">'+it.client+'</span></td>' +
+      '<td><span class="cbadge cb-'+it.client+'" data-client="'+it.client+'">'+it.client+'</span></td>' +
       '<td>'+it.inter_type+'</td>' +
       '<td style="max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(it.objet||'').replace(/"/g,'&quot;')+'">'+it.objet+'</td>' +
       '<td class="mono">'+it.mois+'</td>' +
       '<td><span class="badge '+(sb[it.statut]||'badge-gray')+'">'+it.statut+'</span></td>' +
       '<td>'+docsCell+'</td>' +
-      '<td>'+editCell+'</td>' +
+      '<td>'+actionsCell+'</td>' +
     '</tr>';
   }).join('');
 }
@@ -2416,7 +2648,7 @@ function openEditInter(interId){
     return '<option value="'+c.s+'" '+(c.s===it.serie?'selected':'')+'>'+c.s+' · '+c.t+' · '+c.cl+'</option>';
   }).join('');
 
-  var typeOpts = ['Devis','Entretien'].map(function(t){
+  var typeOpts = ['Devis','Entretien','Contrat'].map(function(t){
     return '<option '+(t===it.inter_type?'selected':'')+'>'+t+'</option>';
   }).join('');
 
@@ -2533,53 +2765,87 @@ function closeIntervention(interId){
 // ══════════════════════════════════════════
 // NOTIFICATIONS CONFIG — TO/CC list
 // ══════════════════════════════════════════
+var _notifListenerAttached = false;
+
 function loadNotifConfig(){
-  // Local cache first
+  // 1. Cache local d'abord (utilisable instantanément)
   var raw = localStorage.getItem('gxo3_notif_config');
   if(raw){
     try { notif_config = JSON.parse(raw); } catch(e){ notif_config = null; }
   }
   if(!notif_config) notif_config = JSON.parse(JSON.stringify(NOTIF_CONFIG_DEFAULT));
 
-  // Pull from Firestore if available
-  if(window.FB && window.FB.ready){
-    try {
-      window.FB.getDoc(window.FB.doc(window.FB.db, 'meta', 'notifications'))
-        .then(function(d){
-          if(d.exists() && d.data().config){
-            notif_config = d.data().config;
+  // 2. Si Firebase pas prêt, attendre qu'il le soit
+  if(!window.FB || !window.FB.ready){
+    window.addEventListener('firebase-ready', function(){
+      // Petit délai pour laisser le _hasInitiallyLoaded se mettre à jour
+      setTimeout(loadNotifConfig, 1500);
+    }, { once: true });
+    return;
+  }
+
+  // 3. Fetch initial depuis Firebase (force-server pour ignorer le cache offline)
+  try {
+    window.FB.getDoc(window.FB.doc(window.FB.db, 'meta', 'notifications'))
+      .then(function(d){
+        if(d.exists() && d.data().config){
+          var fbCfg = d.data().config;
+          // Ne mettre à jour que si différent (évite re-render inutile)
+          if(JSON.stringify(fbCfg) !== JSON.stringify(notif_config)){
+            notif_config = fbCfg;
             localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
             renderNotifConfig();
-          } else {
-            // Seed Firestore with default if empty
-            saveNotifConfig();
+            console.log('📧 Notif config loaded from Firebase');
           }
-        })
-        .catch(function(e){ console.warn('Notif config load:', e); });
+        } else if(_hasInitiallyLoaded){
+          // Firestore n'a pas de config, push le défaut local
+          saveNotifConfig();
+        }
+      })
+      .catch(function(e){ console.warn('Notif config load err:', e); });
 
-      // Listen for live updates
+    // 4. Listener temps réel pour modifications futures (1 seule fois)
+    if(!_notifListenerAttached){
+      _notifListenerAttached = true;
       window.FB.onSnapshot(window.FB.doc(window.FB.db, 'meta', 'notifications'), function(d){
         if(_suppressRemoteUpdate) return;
         if(d.exists() && d.data().config){
-          notif_config = d.data().config;
-          localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
-          renderNotifConfig();
+          var fbCfg = d.data().config;
+          if(JSON.stringify(fbCfg) !== JSON.stringify(notif_config)){
+            notif_config = fbCfg;
+            localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
+            renderNotifConfig();
+            console.log('📧 Notif config updated from Firebase listener');
+          }
         }
+      }, function(err){
+        console.error('Notif listener err:', err);
+        _notifListenerAttached = false; // permet retry
       });
-    } catch(e){ console.error(e); }
-  }
+    }
+  } catch(e){ console.error('loadNotifConfig:', e); }
 }
 
 function saveNotifConfig(){
   if(!notif_config) return;
   localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
-  if(window.FB && window.FB.ready && _hasInitiallyLoaded){
+  // Push to Firestore (sans dépendre de _hasInitiallyLoaded car cette config est isolée)
+  if(window.FB && window.FB.ready){
     try {
       _suppressRemoteUpdate = true;
       window.FB.setDoc(window.FB.doc(window.FB.db, 'meta', 'notifications'), { config: notif_config })
-        .then(function(){ setTimeout(function(){ _suppressRemoteUpdate = false; }, 500); })
-        .catch(function(e){ console.error('Notif save err:', e); _suppressRemoteUpdate = false; });
+        .then(function(){
+          setTimeout(function(){ _suppressRemoteUpdate = false; }, 500);
+          console.log('📧 Notif config saved to Firebase');
+        })
+        .catch(function(e){
+          console.error('Notif save err:', e);
+          _suppressRemoteUpdate = false;
+          toast('Erreur sauvegarde notifications', 'err');
+        });
     } catch(e){ console.error(e); _suppressRemoteUpdate = false; }
+  } else {
+    toast('Hors ligne — sera sauvegardé au retour de la connexion', 'ok');
   }
 }
 
@@ -2640,9 +2906,48 @@ function renderNotifConfig(){
   ccList.innerHTML = renderEmailTags(notif_config.cc, 'cc');
 }
 
+
+// Force re-fetch from Firebase (utile en cas de désynchro)
+function forceReloadNotifConfig(){
+  if(!window.FB || !window.FB.ready){
+    toast('Firebase non disponible', 'err');
+    return;
+  }
+  toast('Rechargement...', 'ok');
+  // Detacher l'éventuel listener pour le re-créer proprement
+  _notifListenerAttached = false;
+  // Force fresh fetch (server, pas cache)
+  window.FB.getDoc(window.FB.doc(window.FB.db, 'meta', 'notifications'))
+    .then(function(d){
+      if(d.exists() && d.data().config){
+        notif_config = d.data().config;
+        localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
+        renderNotifConfig();
+        toast('✓ Configuration rechargée depuis Firebase', 'ok');
+        // Réattacher le listener
+        loadNotifConfig();
+      } else {
+        toast('Aucune config sur Firebase', 'err');
+      }
+    })
+    .catch(function(e){
+      console.error(e);
+      toast('Erreur de chargement: ' + e.message, 'err');
+    });
+}
+
+var _lastTestEmailAt = 0;
 function testNotifEmail(){
   if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
+  // Anti-spam : 30s entre 2 tests
+  var now = Date.now();
+  if(now - _lastTestEmailAt < 30000){
+    var remaining = Math.ceil((30000 - (now - _lastTestEmailAt))/1000);
+    toast('Patientez ' + remaining + 's avant un nouveau test', 'err');
+    return;
+  }
   if(!confirm('Envoyer un email de test à tous les destinataires configurés ?')) return;
+  _lastTestEmailAt = now;
   // Send a fake panne notification
   var fakePanne = {
     serie: 'TEST-001',
@@ -3026,7 +3331,7 @@ function renderStats(){
     h3 = '<div class="empty"><div class="ei">🔧</div><p>Aucune intervention</p></div>';
   } else {
     var maxT = tArr[0].count;
-    var colors = {'Devis':'var(--blue)','Entretien':'var(--green)'};
+    var colors = {'Devis':'var(--blue)','Entretien':'var(--green)','Contrat':'var(--orange)'};
     for(var i=0;i<tArr.length;i++){
       var t = tArr[i];
       var pct = Math.round(t.count/maxT * 100);
@@ -3284,8 +3589,10 @@ function saveAuth(){
 }
 
 function saveSession(){
-  if(currentUser) localStorage.setItem('gxo3_session', JSON.stringify(currentUser));
-  else localStorage.removeItem('gxo3_session');
+  try {
+    if(currentUser) localStorage.setItem('gxo3_session', JSON.stringify(currentUser));
+    else localStorage.removeItem('gxo3_session');
+  } catch(e){ console.error('saveSession err', e); }
 }
 
 function findEmployeeLocal(u, c){
@@ -3439,7 +3746,25 @@ function showSettingsTab(tab){
   document.getElementById('stab-content-'+tab).classList.add('active');
   if(tab==='employees') renderEmployees();
   if(tab==='clients') renderSettings();
-  if(tab==='notif') renderNotifConfig();
+  if(tab==='notif'){
+    renderNotifConfig();
+    // Force fetch au cas où la config aurait changé
+    if(window.FB && window.FB.ready){
+      try {
+        window.FB.getDoc(window.FB.doc(window.FB.db, 'meta', 'notifications'))
+          .then(function(d){
+            if(d.exists() && d.data().config){
+              var fbCfg = d.data().config;
+              if(JSON.stringify(fbCfg) !== JSON.stringify(notif_config)){
+                notif_config = fbCfg;
+                localStorage.setItem('gxo3_notif_config', JSON.stringify(notif_config));
+                renderNotifConfig();
+              }
+            }
+          });
+      } catch(e){}
+    }
+  }
   if(tab==='ajouter') populateFormSelects();
 }
 
@@ -3477,6 +3802,7 @@ function revealCode(i){
 }
 
 function addEmployee(){
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
   var u = document.getElementById('ne-user').value.trim().toLowerCase();
   var n = document.getElementById('ne-name').value.trim();
   var r = document.getElementById('ne-role').value;
@@ -3496,9 +3822,20 @@ function addEmployee(){
 }
 
 function delEmployee(i){
-  if(employees[i].user === 'admin'){ toast('Impossible de supprimer admin','err'); return; }
-  if(currentUser && employees[i].user === currentUser.user){ toast('Impossible de supprimer son propre compte','err'); return; }
-  if(!confirm('Supprimer l employé '+employees[i].user+' ?')) return;
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
+  var emp = employees[i];
+  if(!emp){ toast('Employé introuvable','err'); return; }
+  if(emp.user === 'admin'){ toast('Impossible de supprimer admin','err'); return; }
+  if(currentUser && emp.user === currentUser.user){ toast('Impossible de supprimer son propre compte','err'); return; }
+  // Protection : ne pas supprimer le dernier admin
+  if(emp.role === 'admin'){
+    var adminCount = employees.filter(function(e){return e.role === 'admin'}).length;
+    if(adminCount <= 1){
+      toast('Impossible de supprimer le dernier administrateur','err');
+      return;
+    }
+  }
+  if(!confirm("Supprimer l'employé " + emp.user + " ?")) return;
   employees.splice(i, 1);
   saveAuth();
   renderEmployees();
@@ -3540,6 +3877,7 @@ function restoreDefaultEmployees(){
 }
 
 function editEmployee(i){
+  if(!isAdmin()){ toast('Réservé aux administrateurs','err'); return; }
   var e = employees[i];
   var newCode = prompt('Nouveau code pour '+e.user+' :', e.code);
   if(newCode === null) return;
