@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="app-version" content="2026.04.28.1434">
+  <meta name="app-version" content="2026.04.28.1501">
 <meta name="theme-color" content="#0a0a0a">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>GXO Chariot</title>
@@ -989,7 +989,7 @@ tbody tr:hover td{background:var(--surface2)}
         <div class="form-group"><label>Coût HT (€)</label><input class="finput" id="ni-cout" type="number" placeholder="0"></div>
         <div class="form-group"><label>Statut</label>
           <select class="fselect" id="ni-statut">
-            <option>Terminé</option><option>En cours</option><option>Non traité</option>
+            <option>Non traité</option><option>En cours</option><option>Devis envoyé client</option><option>Terminé</option>
           </select>
         </div>
       </div>
@@ -1457,7 +1457,7 @@ setTimeout(updateConnectivityIndicator, 2000);
 // ══════════════════════════════════════════
 // AUTO-UPDATE CHECK — empêche les caches obsolètes (surtout iOS Safari)
 // ══════════════════════════════════════════
-var APP_VERSION = "2026.04.28.1434";
+var APP_VERSION = "2026.04.28.1501";
 window.APP_VERSION = APP_VERSION;
 
 function checkForUpdate(silent){
@@ -1861,9 +1861,36 @@ function showInterDetails(interId){
     html += '</div>';
   }
 
+  // Commentaire Fenwick principal
+  if(it.comFenwick && it.comFenwick.trim()){
+    html += '<div style="margin-top:14px;padding:14px;background:#0a1825;border-left:3px solid #5599ff;border-radius:6px">';
+    html += '<div style="font-size:11px;color:#5599ff;font-weight:700;letter-spacing:.05em;margin-bottom:6px">💬 COMMENTAIRE FENWICK</div>';
+    if(it.comFenwickAuthor || it.comFenwickAt){
+      html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Mise à jour ' + (it.comFenwickAt||'') + (it.comFenwickAuthor ? ' par ' + it.comFenwickAuthor : '') + '</div>';
+    }
+    html += '<div style="font-size:13px;line-height:1.6;white-space:pre-wrap;color:#e6e6e6">'+it.comFenwick+'</div>';
+    html += '</div>';
+  }
+
+  // Historique des commentaires
+  if(it.comFenwickHistory && it.comFenwickHistory.length){
+    html += '<div style="margin-top:14px;padding:12px;background:var(--surface-2);border-radius:6px">';
+    html += '<div style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:8px">📜 HISTORIQUE DES COMMENTAIRES ('+it.comFenwickHistory.length+')</div>';
+    var histArr = it.comFenwickHistory.slice().reverse();
+    for(var hi=0; hi<histArr.length; hi++){
+      var h = histArr[hi];
+      html += '<div style="padding:8px 0;border-bottom:1px dotted var(--border);font-size:11px">';
+      html += '<div style="color:var(--muted);margin-bottom:3px"><span style="color:#5599ff;font-weight:600">'+(h.author||'?')+'</span> · '+(h.date||'')+'</div>';
+      html += '<div style="color:#bbb;white-space:pre-wrap">'+(h.text||'')+'</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Pièces jointes
   if(it.docs && it.docs.length){
     html += '<div style="margin-top:14px">';
-    html += '<div style="font-size:11px;color:var(--blue);font-weight:700;letter-spacing:.05em;margin-bottom:8px">💬 COMMENTAIRES & FICHIERS FENWICK ('+it.docs.length+')</div>';
+    html += '<div style="font-size:11px;color:var(--orange);font-weight:700;letter-spacing:.05em;margin-bottom:8px">📎 PIÈCES JOINTES ('+it.docs.length+')</div>';
     for(var i=0;i<it.docs.length;i++){
       var d = it.docs[i];
       var iconType = (d.type||'').indexOf('image')>=0 ? '🖼' : (d.type||'').indexOf('pdf')>=0 ? '📄' : '📎';
@@ -1872,14 +1899,18 @@ function showInterDetails(interId){
       html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(d.name||'Fichier '+(i+1))+'</div>';
       if(d.size) html += '<div style="font-size:10px;color:var(--muted)">'+(Math.round(d.size/1024))+' Ko</div>';
       html += '</div>';
-      if(d.data){
-        html += '<a href="'+d.data+'" download="'+(d.name||'fichier')+'" class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:11px">⬇</a>';
+      if(d.data || d.dataUrl){
+        var url = d.data || d.dataUrl;
+        html += '<a href="'+url+'" download="'+(d.name||'fichier')+'" class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:11px">⬇</a>';
       }
       html += '</div>';
     }
     html += '</div>';
-  } else {
-    html += '<div style="margin-top:14px;padding:14px;text-align:center;color:var(--muted);font-size:12px;background:var(--surface-2);border-radius:6px">Aucun commentaire ou fichier Fenwick pour le moment</div>';
+  }
+
+  // Empty state si rien
+  if(!(it.comFenwick && it.comFenwick.trim()) && !(it.docs && it.docs.length)){
+    html += '<div style="margin-top:14px;padding:14px;text-align:center;color:var(--muted);font-size:12px;background:var(--surface-2);border-radius:6px">Aucun commentaire Fenwick ni pièce jointe pour le moment</div>';
   }
 
   html += '</div>';
@@ -2228,7 +2259,17 @@ function renderInterventions(){
 
   const sb={Terminé:'badge-green','En cours':'badge-yellow','Non traité':'badge-red','Devis envoyé client':'badge-blue'};
   document.getElementById('inter-tbody').innerHTML = filtered.map(function(it){
-    var docsCell = (it.docs && it.docs.length) ? '<span style="color:var(--blue);cursor:pointer" onclick="event.stopPropagation();showDocs(\''+it.id+'\')" title="Voir commentaires/fichiers Fenwick">💬 '+it.docs.length+'</span>' : '<span style="color:var(--muted);font-size:10px">—</span>';
+    var hasCom = it.comFenwick && it.comFenwick.trim().length > 0;
+    var nDocs = (it.docs && it.docs.length) || 0;
+    var docsCell;
+    if(hasCom || nDocs > 0){
+      var label = '';
+      if(hasCom) label += '💬';
+      if(nDocs > 0) label += (hasCom ? ' ' : '') + '📎' + nDocs;
+      docsCell = '<span style="color:var(--blue);cursor:pointer;font-size:13px" onclick="event.stopPropagation();showInterDetails(\''+it.id+'\')" title="Voir le commentaire et fichiers Fenwick">'+label+'</span>';
+    } else {
+      docsCell = '<span style="color:var(--muted);font-size:10px">—</span>';
+    }
     var canEditThis = currentUser && (currentUser.role === 'admin' || currentUser.role === 'technicien');
     var actionsCell = '<div style="display:flex;gap:4px;justify-content:flex-end">';
     actionsCell += '<button class="btn btn-ghost btn-sm" style="padding:4px 9px;font-size:11px" onclick="event.stopPropagation();showInterDetails(\''+it.id+'\')" title="Voir l\'incident">👁</button>';
@@ -2656,7 +2697,7 @@ function openEditInter(interId){
     return '<option '+(m===it.mois?'selected':'')+'>'+m+'</option>';
   }).join('');
 
-  var statutOpts = ['Terminé','En cours','Non traité'].map(function(s){
+  var statutOpts = ['Non traité','En cours','Devis envoyé client','Terminé'].map(function(s){
     return '<option '+(s===it.statut?'selected':'')+'>'+s+'</option>';
   }).join('');
 
@@ -2674,6 +2715,13 @@ function openEditInter(interId){
       '<div class="form-group"><label>Coût HT (€)</label><input class="finput" id="edi-cout" type="number" value="'+(it.cout||0)+'"></div>' +
     '</div>' +
     '<div class="form-group"><label>Statut</label><select class="fselect" id="edi-statut">'+statutOpts+'</select></div>' +
+    // Section commentaire Fenwick
+    '<div class="form-group" style="background:#0a1825;border:1px solid #1a3a5a;border-radius:8px;padding:14px;margin-top:6px">' +
+      '<label style="color:#5599ff;text-transform:uppercase;letter-spacing:.05em;font-size:11px;font-weight:700;margin-bottom:8px;display:block">💬 Commentaire Fenwick</label>' +
+      '<p style="font-size:11px;color:var(--muted);margin-bottom:8px">Notez ici l\'avancement, le diagnostic, ce qui a été fait. Visible par tous les utilisateurs via le bouton 👁.</p>' +
+      '<textarea class="ftextarea" id="edi-com-fenwick" placeholder="Ex: Pièce commandée, livraison prévue lundi. Devis envoyé pour validation..." rows="4">'+(it.comFenwick||'')+'</textarea>' +
+      (it.comFenwickHistory && it.comFenwickHistory.length ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #1a3a5a"><div style="font-size:10px;color:var(--muted);margin-bottom:6px">📜 HISTORIQUE</div>' + it.comFenwickHistory.slice(-5).reverse().map(function(h){return '<div style="font-size:11px;color:#aaa;padding:5px 0;border-bottom:1px dotted #1a3a5a"><span style="color:#5599ff;font-weight:600">'+(h.author||'?')+'</span> <span style="color:var(--muted)">'+(h.date||'')+'</span><br><span style="white-space:pre-wrap">'+(h.text||'').substring(0,200)+'</span></div>'}).join('') + '</div>' : '') +
+    '</div>' +
     '<div class="form-group">' +
       '<label>Pièces jointes</label>' +
       '<div class="attach-area" onclick="document.getElementById(\'edi-files\').click()">' +
@@ -2708,6 +2756,26 @@ function saveInterEdit(interId){
   it.intervenant = document.getElementById('edi-intervenant').value.trim();
   it.cout = parseFloat(document.getElementById('edi-cout').value) || 0;
   it.statut = document.getElementById('edi-statut').value;
+  // Commentaire Fenwick
+  var newCom = (document.getElementById('edi-com-fenwick') ? document.getElementById('edi-com-fenwick').value.trim() : '');
+  var oldCom = it.comFenwick || '';
+  if(newCom !== oldCom){
+    // Archive précédent dans l'historique avant de remplacer
+    if(oldCom){
+      if(!it.comFenwickHistory) it.comFenwickHistory = [];
+      // Évite de dupliquer si l'auteur change pas dans la minute
+      it.comFenwickHistory.push({
+        author: (it.comFenwickAuthor || '?'),
+        date: (it.comFenwickAt || it.date || ''),
+        text: oldCom
+      });
+      // On garde max 20 entrées
+      if(it.comFenwickHistory.length > 20) it.comFenwickHistory = it.comFenwickHistory.slice(-20);
+    }
+    it.comFenwick = newCom;
+    it.comFenwickAt = new Date().toLocaleString('fr-FR');
+    it.comFenwickAuthor = currentUser ? (currentUser.name || currentUser.user) : '?';
+  }
   it.docs = pendingFiles['edi'] || [];
   save();
   closeModal('modal-chariot');
