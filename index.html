@@ -12,6 +12,8 @@
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%23080C12'/%3E%3Crect x='1' y='1' width='178' height='178' rx='38' fill='%230D1117'/%3E%3Ctext x='90' y='105' font-family='monospace' font-size='72' font-weight='bold' fill='%2300C8FF' text-anchor='middle'%3EP%3C/text%3E%3Ccircle cx='32' cy='32' r='8' fill='%2300C8FF' opacity='0.8'/%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --bg:#080C12;
@@ -1030,29 +1032,151 @@ function setSyncStatus(status, label) {
   lbl.textContent = label;
 }
 
+/* ══ FIREBASE ══ */
+var firebaseConfig = {
+  apiKey: "AIzaSyBEYBGV6YD0zFUhvEVGfgp12pPpteynsqM",
+  authDomain: "prestataire-1d459.firebaseapp.com",
+  projectId: "prestataire-1d459",
+  storageBucket: "prestataire-1d459.firebasestorage.app",
+  messagingSenderId: "185854578014",
+  appId: "1:185854578014:web:e25d94d653d756fc6253cf"
+};
+var db = null;
+var fbReady = false;
+var fbInitDone = false;
+var unsubscribe = null;
+var isSeeding = false;
+var skipNextSnapshot = false;
+
+function initFirebase() {
+  if (fbInitDone) return;
+  fbInitDone = true;
+  try {
+    if (typeof firebase === 'undefined') {
+      console.warn('Firebase SDK absent');
+      setSyncStatus('error', '// Mode local (SDK absent)');
+      return;
+    }
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    fbReady = true;
+    setSyncStatus('syncing', '// Connexion Firebase...');
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    fbReady = false;
+    setSyncStatus('error', '// Mode local — ' + e.message);
+  }
+}
+
 function loadData() {
   try {
     var s = JSON.parse(localStorage.getItem(SKT));
     typologies = (s && s.length) ? s : DEFAULT_TYPOS.slice();
   } catch(e) { typologies = DEFAULT_TYPOS.slice(); }
 
+  // Charge depuis localStorage immediatement (apparait tres vite)
   try { prests = JSON.parse(localStorage.getItem(SK)) || []; } catch(e) { prests = []; }
-
   if (prests.length === 0) {
     prests = SEED_DATA.map(function(p) {
       return Object.assign({}, p, {id: p.id || uid()});
     });
     localStorage.setItem(SK, JSON.stringify(prests));
   }
-
-  setSyncStatus('ok', '// Local — ' + prests.length + ' presta');
+  setSyncStatus('syncing', '// Local — ' + prests.length + ' presta');
   renderNav(); render(); populateCatSelects();
+
+  // Init Firebase et ecoute en parallele
+  initFirebase();
+  if (!fbReady) return;
+
+  // Timeout : si Firebase ne repond pas en 6s on reste en mode local
+  var fbTimeout = setTimeout(function() {
+    setSyncStatus('error', '// Mode local (timeout Firebase)');
+  }, 6000);
+
+  try {
+    if (unsubscribe) unsubscribe();
+    unsubscribe = db.collection('prestataires').onSnapshot(function(snap) {
+      clearTimeout(fbTimeout);
+      if (skipNextSnapshot) { skipNextSnapshot = false; return; }
+      var fbPrests = [];
+      snap.forEach(function(doc) {
+        fbPrests.push(Object.assign({id: doc.id}, doc.data()));
+      });
+
+      if (fbPrests.length === 0 && !isSeeding) {
+        // Firebase vide : on push les SEED_DATA
+        seedFirebase();
+        return;
+      }
+      if (fbPrests.length > 0) {
+        prests = fbPrests;
+        localStorage.setItem(SK, JSON.stringify(prests));
+        setSyncStatus('ok', '// Sync OK — ' + prests.length + ' presta');
+        renderNav(); render();
+        if (isDesktop && selectedId) renderDetailDesktop(selectedId);
+      }
+    }, function(err) {
+      clearTimeout(fbTimeout);
+      console.error('Firestore error:', err.code, err.message);
+      setSyncStatus('error', '// Mode local — ' + err.code);
+    });
+  } catch(e) {
+    clearTimeout(fbTimeout);
+    console.error('Firestore listen error:', e);
+    setSyncStatus('error', '// Mode local');
+  }
+}
+
+function seedFirebase() {
+  if (isSeeding || !fbReady) return;
+  isSeeding = true;
+  setSyncStatus('syncing', '// Import initial Firebase...');
+  var chunks = [];
+  for (var i = 0; i < prests.length; i += 100) chunks.push(prests.slice(i, i + 100));
+  var promises = chunks.map(function(chunk) {
+    var batch = db.batch();
+    chunk.forEach(function(p) {
+      var data = Object.assign({}, p);
+      delete data.id;
+      var ref = db.collection('prestataires').doc(p.id || uid());
+      batch.set(ref, data);
+    });
+    return batch.commit();
+  });
+  Promise.all(promises).then(function() {
+    setSyncStatus('ok', '// Import OK — ' + prests.length);
+    isSeeding = false;
+  }).catch(function(e) {
+    setSyncStatus('error', '// Erreur import: ' + e.code);
+    console.error('Seed error:', e);
+    isSeeding = false;
+  });
 }
 
 function saveData() { localStorage.setItem(SK, JSON.stringify(prests)); }
 function saveTypos() { localStorage.setItem(SKT, JSON.stringify(typologies)); }
-function fbSavePrestataire(p) { saveData(); }
-function fbDeletePrestataire(id) { saveData(); }
+
+function fbSavePrestataire(p) {
+  saveData();
+  if (!fbReady) return;
+  var data = Object.assign({}, p);
+  delete data.id;
+  setSyncStatus('syncing', '// Sauvegarde...');
+  db.collection('prestataires').doc(p.id).set(data)
+    .then(function() { setSyncStatus('ok', '// Sync OK'); })
+    .catch(function(e) { setSyncStatus('error', '// Err: ' + e.code); console.error(e); });
+}
+
+function fbDeletePrestataire(id) {
+  prests = prests.filter(function(x) { return x.id !== id; });
+  saveData();
+  if (!fbReady) return;
+  setSyncStatus('syncing', '// Suppression...');
+  db.collection('prestataires').doc(id).delete()
+    .then(function() { setSyncStatus('ok', '// Sync OK'); })
+    .catch(function(e) { setSyncStatus('error', '// Err: ' + e.code); console.error(e); });
+}
 
 function updateStats(){
   var total=prests.length;
@@ -1360,12 +1484,14 @@ function savePrestataire(){
     sites:document.getElementById('f-sites').value.trim(),
     notes:document.getElementById('f-notes').value.trim()};
   var id=document.getElementById('edit-id').value;
+  var savedObj;
   if(id){
     var idx=prests.findIndex(function(x){return x.id===id;});
-    if(idx>=0)prests[idx]=Object.assign({},prests[idx],obj);
+    if(idx>=0){prests[idx]=Object.assign({},prests[idx],obj);savedObj=prests[idx];}
     if(selectedId===id&&isDesktop)renderDetailDesktop(id);
-  } else {obj.id=uid();obj.created=Date.now();prests.push(obj);}
-  saveData();renderNav();render();closeModal('modal-form');
+  } else {obj.id=uid();obj.created=Date.now();prests.push(obj);savedObj=obj;}
+  if(savedObj){skipNextSnapshot=false;fbSavePrestataire(savedObj);}else{saveData();}
+  renderNav();render();closeModal('modal-form');
   toast(id?'// UPDATE OK':'// PRESTATAIRE AJOUTE');
 }
 
@@ -1554,6 +1680,7 @@ function saveScan(){
     poste:'',urgence:'',contrat:'',sites:''};
   prests.push(newP);
   fbSavePrestataire(newP);
+  renderNav();render();
   closeModal('modal-scan');toast('// PRESTATAIRE AJOUTE');
 }
 
@@ -1591,12 +1718,27 @@ document.getElementById('file-excel').addEventListener('change',function(e){
 });
 function confirmImport(){
   var added=0;
+  var newOnes=[];
   importRows.forEach(function(p){
     if(!p.nom)return;
-    prests.push(Object.assign({id:uid(),created:Date.now()},p));
+    var np=Object.assign({id:uid(),created:Date.now()},p);
+    prests.push(np);
+    newOnes.push(np);
     added++;
   });
-  saveData();renderNav();render();closeModal('modal-import');
+  saveData();
+  // Push to Firebase in batch if available
+  if(fbReady && newOnes.length){
+    setSyncStatus('syncing','// Import Firebase...');
+    var batch=db.batch();
+    newOnes.forEach(function(p){
+      var data=Object.assign({},p);delete data.id;
+      batch.set(db.collection('prestataires').doc(p.id),data);
+    });
+    batch.commit().then(function(){setSyncStatus('ok','// Sync OK');})
+      .catch(function(e){setSyncStatus('error','// Err: '+e.code);console.error(e);});
+  }
+  renderNav();render();closeModal('modal-import');
   toast('// '+added+' IMPORTES');
 }
 
@@ -1621,6 +1763,12 @@ function setNote(prestId, note) {
   if (idx < 0) return;
   prests[idx].note = prests[idx].note === note ? 0 : note;
   fbSavePrestataire(prests[idx]);
+  render();
+  if (isDesktop && selectedId === prestId) renderDetailDesktop(prestId);
+  else if (!isDesktop) {
+    var body = document.getElementById('detail-body-mob');
+    if (body) body.innerHTML = buildDetailHtml(prests[idx], true);
+  }
   var labels = ['','Mauvais','Passable','Correct','Bien','Excellent'];
   toast('// ' + (prests[idx].note ? labels[prests[idx].note].toUpperCase() : 'NOTE RETIREE'));
 }
@@ -1901,7 +2049,24 @@ window.addEventListener('resize',function(){
   if(isDesktop&&selectedId)renderDetailDesktop(selectedId);
 });
 
-checkDesktop();populateCatSelects();loadData();
+function startApp(){
+  checkDesktop();populateCatSelects();loadData();
+}
+
+// Attend Firebase max 3s, sinon demarre quand meme
+function waitForFirebase(retries){
+  if(typeof firebase !== 'undefined' && firebase.firestore){
+    startApp();
+    return;
+  }
+  if(retries <= 0){
+    console.warn('Firebase non charge apres 3s, demarrage en mode local');
+    startApp();
+    return;
+  }
+  setTimeout(function(){ waitForFirebase(retries - 1); }, 100);
+}
+waitForFirebase(30);
 </script>
 
 </body>
