@@ -1089,14 +1089,19 @@ function loadData() {
   initFirebase();
   if (!fbReady) return;
 
-  // Timeout : si Firebase ne repond pas en 6s on reste en mode local
+  // Timeout : si Firebase ne repond pas en 5s on bascule en mode local
+  var snapshotReceived = false;
   var fbTimeout = setTimeout(function() {
-    setSyncStatus('error', '// Mode local (timeout Firebase)');
-  }, 6000);
+    if (!snapshotReceived) {
+      setSyncStatus('error', '// Firebase ne repond pas (timeout)');
+      console.warn('Firestore onSnapshot timeout - check rules and authorized domains');
+    }
+  }, 5000);
 
   try {
     if (unsubscribe) unsubscribe();
     unsubscribe = db.collection('prestataires').onSnapshot(function(snap) {
+      snapshotReceived = true;
       clearTimeout(fbTimeout);
       if (skipNextSnapshot) { skipNextSnapshot = false; return; }
       var fbPrests = [];
@@ -1105,7 +1110,6 @@ function loadData() {
       });
 
       if (fbPrests.length === 0 && !isSeeding) {
-        // Firebase vide : on push les SEED_DATA
         seedFirebase();
         return;
       }
@@ -1117,14 +1121,19 @@ function loadData() {
         if (isDesktop && selectedId) renderDetailDesktop(selectedId);
       }
     }, function(err) {
+      snapshotReceived = true;
       clearTimeout(fbTimeout);
       console.error('Firestore error:', err.code, err.message);
-      setSyncStatus('error', '// Mode local — ' + err.code);
+      var msg = '// ' + err.code;
+      if (err.code === 'permission-denied') msg = '// Regles Firestore bloquent';
+      else if (err.code === 'unavailable') msg = '// Firebase hors ligne';
+      else if (err.code === 'unauthenticated') msg = '// Domaine non autorise';
+      setSyncStatus('error', msg);
     });
   } catch(e) {
     clearTimeout(fbTimeout);
     console.error('Firestore listen error:', e);
-    setSyncStatus('error', '// Mode local');
+    setSyncStatus('error', '// Erreur: ' + e.message);
   }
 }
 
