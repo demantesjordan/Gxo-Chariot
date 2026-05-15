@@ -6,10 +6,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="app-version" content="2026.04.28.1501">
+  <meta name="app-version" content="2026.05.15.0550">
 <meta name="theme-color" content="#0a0a0a">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>GXO Chariot</title>
+<title>Chariot</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@300;400;500;600;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -551,8 +551,8 @@ tbody tr:hover td{background:var(--surface2)}
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">
-      <div class="big">GX<span>O</span></div>
-      <div class="sub">Chariot</div>
+      <div class="big">CHA<span>RIOT</span></div>
+      <div class="sub">Gestion du parc</div>
     </div>
     <div class="login-title">Connexion à votre espace</div>
     <div class="login-err" id="login-err"></div>
@@ -575,8 +575,7 @@ tbody tr:hover td{background:var(--surface2)}
 <!-- HEADER -->
 <div id="header">
   <div class="logo">
-    <div class="logo-text">GX<span>O</span></div>
-    <div class="logo-pill">CHARIOT</div>
+    <div class="logo-text">CHA<span>RIOT</span></div>
   </div>
   <div class="header-center"></div>
   <div class="header-right">
@@ -672,7 +671,7 @@ tbody tr:hover td{background:var(--surface2)}
     <!-- ══ INTERVENTIONS ══ -->
     <div class="page" id="page-interventions">
       <div class="ph">
-        <div class="ph-left"><h1>Interventions</h1><p>Historique et suivi des interventions 2024-2025</p></div>
+        <div class="ph-left"><h1>Interventions</h1><p>Historique et suivi des interventions</p></div>
         <div class="ph-actions" id="inter-add-btn"><button class="btn btn-primary btn-sm" onclick="openNewInterModal()">＋ Ajouter</button></div>
       </div>
       <div class="inter-kpis" id="inter-kpis"></div>
@@ -704,7 +703,7 @@ tbody tr:hover td{background:var(--surface2)}
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
-        <select class="finput" id="stats-year" onchange="renderStats()" style="flex:1 1 120px;max-width:160px"></select>
+        <select class="finput" id="stats-year" onchange="onStatsYearChange()" style="flex:1 1 120px;max-width:160px"></select>
         <select class="finput" id="stats-month" onchange="renderStats()" style="flex:1 1 120px;max-width:160px">
           <option value="">Tous les mois</option>
           <option>Janvier</option><option>Février</option><option>Mars</option><option>Avril</option>
@@ -849,13 +848,7 @@ tbody tr:hover td{background:var(--surface2)}
           </div>
           <div class="form-row">
             <div class="form-group"><label>Type *</label>
-              <select class="fselect" id="nw-type">
-                <option value="">-- Choisir --</option>
-                <option>R14</option><option>T20SP</option><option>T25SP</option><option>T25SPFL</option>
-                <option>D12SP</option><option>D12AP</option><option>E16</option><option>E16C</option>
-                <option>E25</option><option>N20</option><option>L12I</option><option>L14I</option>
-                <option>H16T</option><option>TUGGER</option>
-              </select>
+              <select class="fselect" id="nw-type" onchange="onChariotTypeChange()"></select>
             </div>
             <div class="form-group"><label>Client *</label>
               <select class="fselect" id="nw-client"></select>
@@ -1457,7 +1450,7 @@ setTimeout(updateConnectivityIndicator, 2000);
 // ══════════════════════════════════════════
 // AUTO-UPDATE CHECK — empêche les caches obsolètes (surtout iOS Safari)
 // ══════════════════════════════════════════
-var APP_VERSION = "2026.04.28.1501";
+var APP_VERSION = "2026.05.15.0550";
 window.APP_VERSION = APP_VERSION;
 
 function checkForUpdate(silent){
@@ -2332,9 +2325,89 @@ function showDocs(id){
 // ══════════════════════════════════════════
 // AJOUTER CHARIOT
 // ══════════════════════════════════════════
+// Liste par défaut des typologies de chariot
+var DEFAULT_CHARIOT_TYPES = ['R14','T20SP','T25SP','T25SPFL','D12SP','D12AP','D12HP','E16','E16C','E25','E25L','E25 PINCE','N20','L12I','L14I','H16T','TUGGER'];
+
+function getChariotTypes(){
+  // Combine défauts + types détectés dans le parc + types ajoutés manuellement
+  var seen = {};
+  var out = [];
+  // 1. Types par défaut
+  for(var i=0;i<DEFAULT_CHARIOT_TYPES.length;i++){
+    var t = DEFAULT_CHARIOT_TYPES[i];
+    if(!seen[t]){ seen[t] = true; out.push(t); }
+  }
+  // 2. Types présents dans les chariots existants
+  for(var i=0;i<chariots.length;i++){
+    var t = chariots[i].t;
+    if(t && !seen[t]){ seen[t] = true; out.push(t); }
+  }
+  // 3. Types personnalisés stockés en localStorage
+  try {
+    var raw = localStorage.getItem('gxo_custom_chariot_types');
+    if(raw){
+      var custom = JSON.parse(raw);
+      if(Array.isArray(custom)){
+        for(var i=0;i<custom.length;i++){
+          var t = custom[i];
+          if(t && !seen[t]){ seen[t] = true; out.push(t); }
+        }
+      }
+    }
+  } catch(e){}
+  return out.sort();
+}
+
 function populateFormSelects(){
-  const sc=document.getElementById('nw-client');sc.innerHTML='<option value="">-- Choisir --</option>'+clients_list.map(cl=>`<option>${cl}</option>`).join('');
-  
+  // Client
+  var sc = document.getElementById('nw-client');
+  if(sc){
+    sc.innerHTML = '<option value="">-- Choisir --</option>' + clients_list.map(function(cl){return '<option>'+cl+'</option>'}).join('');
+  }
+  // Type
+  var st = document.getElementById('nw-type');
+  if(st){
+    var currentVal = st.value;
+    var types = getChariotTypes();
+    var html = '<option value="">-- Choisir --</option>';
+    for(var i=0;i<types.length;i++) html += '<option>'+types[i]+'</option>';
+    html += '<option value="__add__" style="font-style:italic;color:var(--orange)">+ Ajouter un type…</option>';
+    st.innerHTML = html;
+    if(currentVal && currentVal !== '__add__') st.value = currentVal;
+  }
+}
+
+// Gère le clic sur "Ajouter un type"
+function onChariotTypeChange(){
+  var sel = document.getElementById('nw-type');
+  if(!sel || sel.value !== '__add__') return;
+  var input = prompt('Nom du nouveau type de chariot (ex: R20, X35HP) :');
+  if(!input){ sel.value = ''; return; }
+  var clean = String(input).trim().toUpperCase();
+  if(clean.length < 2 || clean.length > 20){
+    alert('Nom invalide. 2 à 20 caractères.');
+    sel.value = '';
+    return;
+  }
+  // Sauvegarder dans la liste personnalisée
+  var custom = [];
+  try {
+    var raw = localStorage.getItem('gxo_custom_chariot_types');
+    if(raw){
+      var parsed = JSON.parse(raw);
+      if(Array.isArray(parsed)) custom = parsed;
+    }
+  } catch(e){}
+  if(custom.indexOf(clean) < 0){
+    custom.push(clean);
+    try {
+      localStorage.setItem('gxo_custom_chariot_types', JSON.stringify(custom));
+    } catch(e){}
+  }
+  // Re-render et sélectionner
+  populateFormSelects();
+  sel.value = clean;
+  toast('Type "'+clean+'" ajouté ✓', 'ok');
 }
 function addChariot(){
   const serie=document.getElementById('nw-serie').value.trim();
@@ -3171,28 +3244,99 @@ function canEdit(){
 // ══════════════════════════════════════════
 // STATS
 // ══════════════════════════════════════════
+
+// Permet d'ajouter une nouvelle année au filtre statistiques
+function onStatsYearChange(){
+  var sel = document.getElementById('stats-year');
+  if(!sel) return;
+  if(sel.value === '__add__'){
+    var input = prompt('Ajouter une année à la liste (format AAAA, ex: 2027) :');
+    if(input){
+      var clean = String(input).trim();
+      if(/^\d{4}$/.test(clean)){
+        var yearNum = parseInt(clean, 10);
+        if(yearNum < 2000 || yearNum > 2100){
+          alert('Année invalide. Entrez une année entre 2000 et 2100.');
+          sel.value = '';
+          return;
+        }
+        // Sauvegarder
+        var customYears = [];
+        try {
+          var raw = localStorage.getItem('gxo_custom_years');
+          if(raw){
+            var parsed = JSON.parse(raw);
+            if(Array.isArray(parsed)) customYears = parsed;
+          }
+        } catch(e){}
+        if(customYears.indexOf(clean) < 0){
+          customYears.push(clean);
+          try {
+            localStorage.setItem('gxo_custom_years', JSON.stringify(customYears));
+          } catch(e){}
+        }
+        // Reset puis re-render
+        sel.innerHTML = '';
+        renderStats();
+        // Sélectionner la nouvelle année
+        setTimeout(function(){
+          var sel2 = document.getElementById('stats-year');
+          if(sel2) sel2.value = clean;
+          renderStats();
+        }, 50);
+      } else {
+        alert('Format invalide. Entrez une année à 4 chiffres (ex: 2027).');
+        sel.value = '';
+      }
+    } else {
+      sel.value = '';
+    }
+  } else {
+    renderStats();
+  }
+}
+
 function renderStats(){
-  // populate year select if empty
+  // populate year select - détection auto des années présentes + années custom de l'utilisateur
   var yearSel = document.getElementById('stats-year');
-  if(yearSel && yearSel.children.length === 0){
+  if(yearSel){
     var years = {};
+    // Années détectées dans les pannes (champ date au format JJ/MM/AAAA)
     for(var i=0;i<pannes.length;i++){
       var d = pannes[i].date || pannes[i].debut;
       if(d){
-        var y = d.split('/')[2];
-        if(y) years[y] = true;
+        var parts = d.split('/');
+        if(parts.length >= 3 && parts[2].length === 4) years[parts[2]] = true;
       }
     }
+    // Années détectées dans les interventions (champ inter_year ou inter_date)
     for(var i=0;i<inters.length;i++){
-      var m = inters[i].mois;
-      if(m) years['2024'] = true;
-      years['2025'] = true;
+      var it = inters[i];
+      if(it.inter_year) years[it.inter_year] = true;
+      else if(it.inter_date){
+        var parts2 = it.inter_date.split('/');
+        if(parts2.length >= 3 && parts2[2].length === 4) years[parts2[2]] = true;
+      }
     }
+    // Années ajoutées manuellement par l'utilisateur (stockées en localStorage)
+    try {
+      var customYearsRaw = localStorage.getItem('gxo_custom_years');
+      if(customYearsRaw){
+        var customYears = JSON.parse(customYearsRaw);
+        if(Array.isArray(customYears)){
+          for(var i=0;i<customYears.length;i++) years[customYears[i]] = true;
+        }
+      }
+    } catch(e){}
+    // Toujours inclure l'année courante
+    years[new Date().getFullYear().toString()] = true;
     var yarr = Object.keys(years).sort().reverse();
-    if(yarr.length === 0) yarr = ['2025','2024'];
+    var currentVal = yearSel.value;
     var html = '<option value="">Toutes années</option>';
     for(var i=0;i<yarr.length;i++) html += '<option>'+yarr[i]+'</option>';
+    html += '<option value="__add__" style="font-style:italic;color:var(--orange)">+ Ajouter une année…</option>';
     yearSel.innerHTML = html;
+    if(currentVal && currentVal !== '__add__') yearSel.value = currentVal;
   }
 
   // populate client select
@@ -3558,7 +3702,7 @@ function printQR(serie){
   if(!w){ toast('Impossible d ouvrir la fenêtre d impression','err'); return; }
   w.document.write('<html><head><title>QR ' + c.s + '</title></head><body style="font-family:sans-serif;text-align:center;padding:30px;margin:0">' +
     '<div style="border:2px solid #000;padding:20px;display:inline-block;max-width:400px">' +
-      '<h2 style="margin:0 0 6px;font-size:18px">GXO Chariot</h2>' +
+      '<h2 style="margin:0 0 6px;font-size:18px">CHARIOT</h2>' +
       '<div style="font-size:28px;font-weight:900;margin:4px 0">' + c.t + '</div>' +
       '<div style="font-size:13px;color:#444;margin-bottom:10px">' + c.cl + ' · ' + c.s + '</div>' +
       '<img src="' + qrSrc + '" style="width:340px;height:340px;display:block;margin:0 auto">' +
@@ -3572,10 +3716,10 @@ function printQR(serie){
 function printAllQR(){
   var w = window.open('', '_blank');
   if(!w){ toast('Impossible d ouvrir','err'); return; }
-  var html = '<html><head><title>QR Chariots - GXO</title>' +
+  var html = '<html><head><title>QR Chariots</title>' +
     '<style>body{font-family:sans-serif;margin:0;padding:15px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.card{border:2px solid #000;padding:10px;text-align:center;page-break-inside:avoid}.card h3{margin:0;font-size:14px}.card .t{font-size:18px;font-weight:900;margin:3px 0}.card .sub{font-size:10px;color:#555;margin-bottom:5px}.card img{width:100%;max-width:160px;height:auto}</style>' +
     '</head><body>';
-  html += '<h1 style="text-align:center;margin:0 0 15px">Parc Chariots GXO — QR Codes</h1>';
+  html += '<h1 style="text-align:center;margin:0 0 15px">Parc Chariots — QR Codes</h1>';
   html += '<div class="grid">';
   for(var i=0;i<chariots.length;i++){
     var c = chariots[i];
